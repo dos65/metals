@@ -29,10 +29,12 @@ final class BspServers(
     bspGlobalInstallDirectories: List[AbsolutePath]
 )(implicit ec: ExecutionContextExecutorService) {
 
-  def newServer(): Future[Option[BuildServerConnection]] = {
+  def newServer(
+      targetWorkspace: Option[AbsolutePath] = None
+  ): Future[Option[BuildServerConnection]] = {
     findServer().flatMap { details =>
       details
-        .map(d => newServer(d).map(Option(_)))
+        .map(d => newServer(d, targetWorkspace).map(Option(_)))
         .getOrElse(Future.successful(None))
     }
   }
@@ -53,12 +55,15 @@ final class BspServers(
   }
 
   private def newServer(
-      details: BspConnectionDetails
+      details: BspConnectionDetails,
+      targetWorkspace: Option[AbsolutePath]
   ): Future[BuildServerConnection] = {
+
+    val ws = targetWorkspace.getOrElse(workspace)
 
     def newConnection(): Future[SocketConnection] = {
       val process = new ProcessBuilder(details.getArgv)
-        .directory(workspace.toFile)
+        .directory(ws.toFile)
         .start()
 
       val output = new ClosableOutputStream(
@@ -84,7 +89,7 @@ final class BspServers(
     }
 
     BuildServerConnection.fromSockets(
-      workspace,
+      ws,
       buildClient,
       client,
       newConnection,
@@ -118,6 +123,7 @@ final class BspServers(
 
   private def findAvailableServers(): List[BspConnectionDetails] = {
     val jsonFiles = findJsonFiles()
+    scribe.info(s"find available servers $jsonFiles")
     val gson = new Gson()
     for {
       candidate <- jsonFiles
@@ -145,6 +151,7 @@ final class BspServers(
         }
       }
     visit(workspace.resolve(".bsp"))
+    scribe.info(s"??? $bspGlobalInstallDirectories")
     bspGlobalInstallDirectories.foreach(visit)
     buf.result()
   }

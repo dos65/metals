@@ -53,6 +53,10 @@ import scala.meta.internal.rename.RenameProvider
 import ch.epfl.scala.bsp4j.CompileReport
 import java.{util => ju}
 import scala.meta.internal.metals.Messages.IncompatibleBloopVersion
+import scala.meta.internal.builds.SbtBuildTool
+import scala.util.Failure
+import java.util.concurrent.ConcurrentHashMap
+import ch.epfl.scala.bsp4j.BuildTargetIdentifier
 
 class MetalsLanguageServer(
     ec: ExecutionContextExecutorService,
@@ -73,18 +77,19 @@ class MetalsLanguageServer(
   val isCancelled = new AtomicBoolean(false)
   override def cancel(): Unit = {
     if (isCancelled.compareAndSet(false, true)) {
-      val buildShutdown = buildServer match {
-        case Some(build) => build.shutdown()
-        case None => Future.successful(())
-      }
+      // TODO
+      // val buildShutdown = buildServer match {
+      //   case Some(build) => build.shutdown()
+      //   case None => Future.successful(())
+      // }
       try cancelables.cancel()
       catch {
         case NonFatal(_) =>
       }
-      try buildShutdown.asJava.get(100, TimeUnit.MILLISECONDS)
-      catch {
-        case _: TimeoutException =>
-      }
+      // try buildShutdown.asJava.get(100, TimeUnit.MILLISECONDS)
+      // catch {
+      //   case _: TimeoutException =>
+      // }
     }
   }
 
@@ -108,9 +113,19 @@ class MetalsLanguageServer(
     new AtomicReference[b.BuildTargetIdentifier]()
   private val definitionIndex = newSymbolIndex()
   private val symbolDocs = new Docstrings(definitionIndex)
-  var buildServer: Option[BuildServerConnection] =
+  // var buildServer: Option[BuildServerConnection] =
+  //   Option.empty[BuildServerConnection]
+  //private val targetsToConnection = mutable.HashMap.empty[b.BuildTargetIdentifier, BuildServerConnection]
+  private val targetsToConnection =
+    new ConcurrentHashMap[b.BuildTargetIdentifier, BuildServerConnection]
+  private val getConnection = (id: BuildTargetIdentifier) =>
+    Option(targetsToConnection.get(id))
+
+  var sbtBuildServer: Option[BuildServerConnection] =
     Option.empty[BuildServerConnection]
-  private val buildTargetClasses = new BuildTargetClasses(() => buildServer)
+
+  private val buildTargetClasses = new BuildTargetClasses(getConnection)
+
   private val openTextDocument = new AtomicReference[AbsolutePath]()
   private val savedFiles = new ActiveFiles(time)
   private val openedFiles = new ActiveFiles(time)
@@ -122,7 +137,7 @@ class MetalsLanguageServer(
     buildTargets,
     buildTargetClasses,
     () => workspace,
-    () => buildServer,
+    getConnection,
     languageClient,
     buildTarget => focusedDocumentBuildTarget.get() == buildTarget,
     worksheets => onWorksheetChanged(worksheets)
@@ -596,7 +611,7 @@ class MetalsLanguageServer(
       val result = Future
         .sequence(
           List[Future[Unit]](
-            quickConnectToBuildServer().ignoreValue,
+            // quickConnectToBuildServer().ignoreValue,
             slowConnectToBuildServer(forceImport = false).ignoreValue,
             Future(workspaceSymbols.indexClasspath()),
             Future(startHttpServer()),
@@ -830,7 +845,8 @@ class MetalsLanguageServer(
               .flatMap {
                 case item if item == Messages.BloopVersionChange.reconnect =>
                   bloopServers.shutdownServer()
-                  autoConnectToBuildServer().ignoreValue
+                  slowConnectToBuildServer(true).ignoreValue
+                // autoConnectToBuildServer().ignoreValue
                 case _ =>
                   Future.successful(())
               }
@@ -904,10 +920,12 @@ class MetalsLanguageServer(
   @JsonRequest("textDocument/definition")
   def definition(
       position: TextDocumentPositionParams
-  ): CompletableFuture[util.List[Location]] =
+  ): CompletableFuture[util.List[Location]] = {
+    scribe.info(s"definition ${position.toString}")
     CancelTokens.future { token =>
       definitionOrReferences(position, token).map(_.locations)
     }
+  }
 
   @JsonRequest("textDocument/typeDefinition")
   def typeDefinition(
@@ -1175,25 +1193,29 @@ class MetalsLanguageServer(
         }.asJavaObject
       case ServerCommands.RestartBuildServer() =>
         bloopServers.shutdownServer()
-        autoConnectToBuildServer().asJavaObject
+        // autoConnectToBuildServer().asJavaObject
+        slowConnectToBuildServer(true).asJavaObject
       case ServerCommands.ImportBuild() =>
         slowConnectToBuildServer(forceImport = true).asJavaObject
       case ServerCommands.ConnectBuildServer() =>
-        quickConnectToBuildServer().asJavaObject
+        Future.failed(new Exception("Not implemented")).asJavaObject
+      //quickConnectToBuildServer().asJavaObject
       case ServerCommands.DisconnectBuildServer() =>
-        disconnectOldBuildServer().asJavaObject
+        Future.failed(new Exception("Not implemented")).asJavaObject
+      //disconnectOldBuildServer().asJavaObject
       case ServerCommands.RunDoctor() =>
         Future {
           doctor.executeRunDoctor()
         }.asJavaObject
       case ServerCommands.BspSwitch() =>
-        (for {
-          isSwitched <- bspServers.switchBuildServer()
-          _ <- {
-            if (isSwitched) quickConnectToBuildServer()
-            else Future.successful(())
-          }
-        } yield ()).asJavaObject
+        Future.failed(new Exception("Not implemented")).asJavaObject
+      // (for {
+      //   isSwitched <- bspServers.switchBuildServer()
+      //   _ <- {
+      //     if (isSwitched) quickConnectToBuildServer()
+      //     else Future.successful(())
+      //   }
+      // } yield ()).asJavaObject
       case ServerCommands.OpenBrowser(url) =>
         Future.successful(Urls.openBrowser(url)).asJavaObject
       case ServerCommands.CascadeCompile() =>
@@ -1242,28 +1264,29 @@ class MetalsLanguageServer(
           )
         }.asJavaObject
       case ServerCommands.StartDebugAdapter() =>
-        val args = params.getArguments.asScala
-        args match {
-          case Seq(param: JsonElement) =>
-            val session = for {
-              params <- Future.fromTry(param.as[b.DebugSessionParams])
-              server <- DebugServer.start(
-                params,
-                definitionProvider,
-                buildTargets,
-                buildServer
-              )
-            } yield {
-              cancelables.add(server)
-              DebugSession(server.sessionName, server.uri.toString)
-            }
+        // val args = params.getArguments.asScala
+        // args match {
+        //   case Seq(param: JsonElement) =>
+        //     val session = for {
+        //       params <- Future.fromTry(param.as[b.DebugSessionParams])
+        //       server <- DebugServer.start(
+        //         params,
+        //         definitionProvider,
+        //         buildTargets,
+        //         buildServer
+        //       )
+        //     } yield {
+        //       cancelables.add(server)
+        //       DebugSession(server.sessionName, server.uri.toString)
+        //     }
 
-            session.asJavaObject
-          case _ =>
-            val argExample = ServerCommands.StartDebugAdapter.arguments
-            val msg = s"Invalid arguments: $args. Expecting: $argExample"
-            Future.failed(new IllegalArgumentException(msg)).asJavaObject
-        }
+        //     session.asJavaObject
+        //   case _ =>
+        //     val argExample = ServerCommands.StartDebugAdapter.arguments
+        //     val msg = s"Invalid arguments: $args. Expecting: $argExample"
+        //     Future.failed(new IllegalArgumentException(msg)).asJavaObject
+        // }
+        Future.failed(new Exception("not implemeted")).asJavaObject
       case ServerCommands.NewScalaFile() =>
         val parser = new JsonParser.Of[MetalsNewScalaFileParams]
         val args = params.getArguments.asScala
@@ -1367,149 +1390,204 @@ class MetalsLanguageServer(
   private def slowConnectToBuildServer(
       forceImport: Boolean
   ): Future[BuildChange] = {
-    supportedBuildTool match {
-      case Some(buildTool) =>
-        buildTool.digest(workspace) match {
-          case None =>
-            scribe.warn(s"Skipping build import, no checksum.")
-            Future.successful(BuildChange.None)
-          case Some(digest) =>
-            slowConnectToBuildServer(forceImport, buildTool, digest)
-        }
-      case None =>
-        Future.successful(BuildChange.None)
-    }
-  }
-
-  private def slowConnectToBuildServer(
-      forceImport: Boolean,
-      buildTool: BuildTool,
-      checksum: String
-  ): Future[BuildChange] =
-    for {
-      result <- {
-        if (forceImport) bloopInstall.runUnconditionally(buildTool)
-        else bloopInstall.runIfApproved(buildTool, checksum)
-      }
-      change <- {
-        if (result.isInstalled) quickConnectToBuildServer()
-        else if (result.isFailed) {
-          if (buildTools.isAutoConnectable) {
-            // TODO(olafur) try to connect but gracefully error
-            languageClient.showMessage(
-              messages.ImportProjectPartiallyFailed
-            )
-            // Connect nevertheless, many build import failures are caused
-            // by resolution errors in one weird module while other modules
-            // exported successfully.
-            quickConnectToBuildServer()
-          } else {
-            languageClient.showMessage(messages.ImportProjectFailed)
-            Future.successful(BuildChange.Failed)
-          }
-        } else {
-          Future.successful(BuildChange.None)
-        }
-      }
-    } yield change
-
-  private def quickConnectToBuildServer(): Future[BuildChange] = {
-    if (!buildTools.isAutoConnectable) {
-      Future.successful(BuildChange.None)
-    } else {
-      autoConnectToBuildServer()
-    }
-  }
-
-  private def autoConnectToBuildServer(): Future[BuildChange] = {
-    for {
-      _ <- disconnectOldBuildServer()
-      maybeBuild <- timed("connected to build server") {
-        if (buildTools.isBloop) bloopServers.newServer(userConfig)
-        else bspServers.newServer()
-      }
-      result <- maybeBuild match {
-        case Some(build) =>
-          connectToNewBuildServer(build)
-        case None =>
-          Future.successful(BuildChange.None)
-      }
-      _ = {
-        treeView.init()
-        focusedDocument.foreach(treeView.didFocusTextDocument)
-      }
-    } yield result
-  }.recover {
-    case NonFatal(e) =>
-      disconnectOldBuildServer()
-      val message =
-        "Failed to connect with build server, no functionality will work."
-      val details = " See logs for more details."
-      languageClient.showMessage(
-        new MessageParams(MessageType.Error, message + details)
-      )
-      scribe.error(message, e)
-      BuildChange.Failed
-  }
-
-  private def disconnectOldBuildServer(): Future[Unit] = {
-    if (buildServer.isDefined) {
-      scribe.info("disconnected: build server")
-    }
-    buildServer match {
-      case None => Future.successful(())
-      case Some(value) =>
-        buildServer = None
-        diagnostics.reset()
-        value.shutdown()
-    }
-  }
-  private def connectToNewBuildServer(
-      build: BuildServerConnection
-  ): Future[BuildChange] = {
-    scribe.info(s"Connected to Build server v${build.version}")
-    cancelables.add(build)
-    compilers.cancel()
-    buildServer = Some(build)
-    val importedBuild = timed("imported build") {
-      for {
-        workspaceBuildTargets <- build.workspaceBuildTargets()
-        ids = workspaceBuildTargets.getTargets.map(_.getId)
-        scalacOptions <- build
-          .buildTargetScalacOptions(new b.ScalacOptionsParams(ids))
-        sources <- build
-          .buildTargetSources(new b.SourcesParams(ids))
-        dependencySources <- build
-          .buildTargetDependencySources(new b.DependencySourcesParams(ids))
-      } yield {
-        ImportedBuild(
-          workspaceBuildTargets,
-          scalacOptions,
-          sources,
-          dependencySources,
-          build.version,
-          build.name
+    val importer = BuildImporter.create(
+      () => userConfig,
+      bspServers,
+      bloopServers,
+      ec
+    )
+    //   val importedBuild = timed("imported build") {
+    scribe.info("Running connection!")
+    val imported = timed("imported build") {
+      val f = importer
+        .importBuild(
+          workspace,
+          buildTools.loadSupported.get,
+          languageClient,
+          buildClient
         )
-      }
+        .map(builds => {
+          scribe.info("RETURNING BUILD")
+          builds.foreach({
+            case (c, v) => {
+              v.workspaceBuildTargets.getTargets.asScala.foreach(bt => {
+                scribe.info(s" Names is ${bt.getDisplayName}")
+              })
+            }
+          })
+          builds
+        })
+      f.onComplete({
+        case Failure(e) => scribe.error("IMport failed", e)
+        case Success(value) =>
+      })
+      f
     }
-    for {
-      i <- statusBar.trackFuture("Importing build", importedBuild)
-      _ <- profiledIndexWorkspace(
-        () => indexWorkspace(i),
-        () => indexingPromise.trySuccess(())
-      )
-      _ = checkRunningBloopVersion(i.bspServerVersion)
-      _ <- Future.sequence[Unit, List](
-        compilations
-          .cascadeCompileFiles(buffers.open.toSeq)
-          .ignoreValue ::
-          compilers.load(buffers.open.toSeq) ::
-          Nil
-      )
-    } yield {
-      BuildChange.Reconnected
-    }
+
+    val out = imported.flatMap(values => {
+      reset()
+      val futures = values.map({
+        case (conn, v) => {
+
+          v.workspaceBuildTargets
+            .getTargets()
+            .asScala
+            .foreach(bt => {
+              targetsToConnection.put(bt.getId, conn)
+            })
+
+          for {
+            _ <- Future(indexWorkspace(v))
+            _ = checkRunningBloopVersion(v.bspServerVersion)
+            _ = scribe.info("COMPILATION NEXT")
+            _ <- compilations.cascadeCompileFiles(buffers.open.toSeq)
+            _ <- compilers.load(buffers.open.toSeq)
+          } yield conn -> v
+        }
+      })
+      Future.sequence(futures)
+    })
+
+    val f = out.map(_ => BuildChange.Reconnected)
+    f.onComplete({
+      case Failure(e) => scribe.error("IMPORT FAILED", e)
+      case Success(v) => scribe.info("OKOK")
+    })
+    f
   }
+
+  // private def slowConnectToBuildServer(
+  //     forceImport: Boolean,
+  //     buildTool: BuildTool,
+  //     checksum: String
+  // ): Future[BuildChange] =
+  //   for {
+  //     result <- {
+  //       if (forceImport) bloopInstall.runUnconditionally(buildTool)
+  //       else bloopInstall.runIfApproved(buildTool, checksum)
+  //     }
+  //     change <- {
+  //       if (result.isInstalled) quickConnectToBuildServer()
+  //       else if (result.isFailed) {
+  //         if (buildTools.isAutoConnectable) {
+  //           // TODO(olafur) try to connect but gracefully error
+  //           languageClient.showMessage(
+  //             messages.ImportProjectPartiallyFailed
+  //           )
+  //           // Connect nevertheless, many build import failures are caused
+  //           // by resolution errors in one weird module while other modules
+  //           // exported successfully.
+  //           quickConnectToBuildServer()
+  //         } else {
+  //           languageClient.showMessage(messages.ImportProjectFailed)
+  //           Future.successful(BuildChange.Failed)
+  //         }
+  //       } else {
+  //         Future.successful(BuildChange.None)
+  //       }
+  //     }
+  //   } yield change
+
+  // private def quickConnectToBuildServer(): Future[BuildChange] = {
+  //   if (!buildTools.isAutoConnectable) {
+  //     Future.successful(BuildChange.None)
+  //   } else {
+  //     autoConnectToBuildServer()
+  //   }
+  // }
+
+  // private def autoConnectToBuildServer(): Future[BuildChange] = {
+  //   for {
+  //     _ <- disconnectOldBuildServer()
+  //     maybeBuild <- timed("connected to build server") {
+  //       if (buildTools.isBloop) bloopServers.newServer(userConfig)
+  //       else bspServers.newServer()
+  //     }
+  //     result <- maybeBuild match {
+  //       case Some(build) =>
+  //         connectToNewBuildServer(build)
+  //       case None =>
+  //         Future.successful(BuildChange.None)
+  //     }
+  //     _ = {
+  //       treeView.init()
+  //       focusedDocument.foreach(treeView.didFocusTextDocument)
+  //     }
+  //   } yield result
+  // }.recover {
+  //   case NonFatal(e) =>
+  //     disconnectOldBuildServer()
+  //     val message =
+  //       "Failed to connect with build server, no functionality will work."
+  //     val details = " See logs for more details."
+  //     languageClient.showMessage(
+  //       new MessageParams(MessageType.Error, message + details)
+  //     )
+  //     scribe.error(message, e)
+  //     BuildChange.Failed
+  // }
+
+  // private def disconnectOldBuildServer(): Future[Unit] = {
+  //   if (buildServer.isDefined) {
+  //     scribe.info("disconnected: build server")
+  //   }
+  //   buildServer match {
+  //     case None => Future.successful(())
+  //     case Some(value) =>
+  //       buildServer = None
+  //       diagnostics.reset()
+  //       value.shutdown()
+  //   }
+  // }
+  // private def connectToNewBuildServer(
+  //     build: BuildServerConnection
+  // ): Future[BuildChange] = {
+  //   scribe.info(s"Connected to Build server v${build.version}")
+  //   cancelables.add(build)
+  //   compilers.cancel()
+  //   buildServer = Some(build)
+  //   val importedBuild = timed("imported build") {
+  //     for {
+  //       workspaceBuildTargets <- build.workspaceBuildTargets()
+  //       _ = scribe.info("TARGETS:" + workspaceBuildTargets.getTargets.asScala.mkString("\n"))
+  //       // _ <- build.
+  //       ids = workspaceBuildTargets.getTargets.map(_.getId)
+  //       scalacOptions <- build
+  //         .buildTargetScalacOptions(new b.ScalacOptionsParams(ids))
+  //       sources <- build
+  //         .buildTargetSources(new b.SourcesParams(ids))
+  //       dependencySources <- build
+  //         .buildTargetDependencySources(new b.DependencySourcesParams(ids))
+  //       _ = scribe.info(s"sources: ${dependencySources.getItems()}")
+  //     } yield {
+  //       ImportedBuild(
+  //         workspaceBuildTargets,
+  //         scalacOptions,
+  //         sources,
+  //         dependencySources,
+  //         build.version,
+  //         build.name
+  //       )
+  //     }
+  //   }
+  //   for {
+  //     i <- statusBar.trackFuture("Importing build", importedBuild)
+  //     _ <- profiledIndexWorkspace(
+  //       () => indexWorkspace(i),
+  //       () => indexingPromise.trySuccess(())
+  //     )
+  //     _ = checkRunningBloopVersion(i.bspServerVersion)
+  //     _ <- Future.sequence[Unit, List](
+  //       compilations
+  //         .cascadeCompileFiles(buffers.open.toSeq)
+  //         .ignoreValue ::
+  //         compilers.load(buffers.open.toSeq) ::
+  //         Nil
+  //     )
+  //   } yield {
+  //     BuildChange.Reconnected
+  //   }
+  // }
 
   private def indexWorkspaceSources(): Unit = {
     for {
@@ -1646,23 +1724,36 @@ class MetalsLanguageServer(
     scribe.info(s"memory: $footprint")
   }
 
+  def reset(): Unit = {
+    scribe.info("RESET STATE")
+    buildTargets.reset()
+    interactiveSemanticdbs.reset()
+    buildClient.reset()
+    semanticDBIndexer.reset()
+    treeView.reset()
+    worksheetProvider.reset()
+    symbolSearch.reset()
+  }
+
   def indexWorkspace(i: ImportedBuild): Unit = {
+    scribe.info(
+      "index for " + i.workspaceBuildTargets
+        .getTargets()
+        .asScala
+        .map(_.getDisplayName())
+    )
     timedThunk("updated build targets", config.statistics.isIndex) {
-      buildTargets.reset()
-      interactiveSemanticdbs.reset()
-      buildClient.reset()
-      semanticDBIndexer.reset()
-      treeView.reset()
-      worksheetProvider.reset()
-      symbolSearch.reset()
       buildTargets.addWorkspaceBuildTargets(i.workspaceBuildTargets)
       buildTargets.addScalacOptions(i.scalacOptions)
+
       for {
         item <- i.sources.getItems.asScala
         source <- item.getSources.asScala
       } {
         val sourceItemPath = source.getUri.toAbsolutePath
-        buildTargets.addSourceItem(sourceItemPath, item.getTarget)
+        if (sourceItemPath.exists) {
+          buildTargets.addSourceItem(sourceItemPath, item.getTarget)
+        }
       }
       doctor.check(i.bspServerName, i.bspServerVersion)
       buildTools
@@ -1721,7 +1812,8 @@ class MetalsLanguageServer(
         languageClient.showMessageRequest(messageParams).asScala.foreach {
           case action if action == IncompatibleBloopVersion.shutdown =>
             bloopServers.shutdownServer()
-            autoConnectToBuildServer()
+            slowConnectToBuildServer(true)
+          // autoConnectToBuildServer()
           case action if action == IncompatibleBloopVersion.dismissForever =>
             notification.dismissForever()
           case _ =>
@@ -1833,7 +1925,9 @@ class MetalsLanguageServer(
   ): Future[BuildChange] = {
     val isBuildChange = paths.exists(buildTools.isBuildRelated(workspace, _))
     if (isBuildChange) {
-      slowConnectToBuildServer(forceImport = false)
+      //slowConnectToBuildServer(forceImport = false)
+      scribe.info("ON BUILD CHANGE")
+      Future.successful(BuildChange.None)
     } else {
       Future.successful(BuildChange.None)
     }
@@ -1852,9 +1946,13 @@ class MetalsLanguageServer(
       definitionOnly: Boolean = false
   ): Future[DefinitionResult] = {
     val source = position.getTextDocument.getUri.toAbsolutePath
-    if (source.isScalaFilename) {
-      val semanticDBDoc =
-        semanticdbs.textDocument(source).documentIncludingStale
+    if (source.isScalaFilename || source.isSbt) {
+      scribe.info(
+        s"BUILD TARGET? for ${source}: ${buildTargets.inferBuildTarget(source)}"
+      )
+      val semanticLookup = semanticdbs.textDocument(source)
+      scribe.info(s"???? SEMANTIC LOOKUP ${semanticLookup}")
+      val semanticDBDoc = semanticLookup.documentIncludingStale
       (for {
         doc <- semanticDBDoc
         positionOccurrence = definitionProvider.positionOccurrence(
@@ -1913,12 +2011,13 @@ class MetalsLanguageServer(
       token: CancelToken = EmptyCancelToken
   ): Future[DefinitionResult] = {
     val source = position.getTextDocument.getUri.toAbsolutePath
-    if (source.isScalaFilename) {
+    if (source.isScalaFilename || source.isSbt) {
       val result = timedThunk("definition", config.statistics.isDefinition)(
         definitionProvider.definition(source, position, token)
       )
       result.onComplete {
         case Success(value) =>
+          scribe.info(s"HERE for $position")
           // Record what build target this dependency source (if any) was jumped from,
           // needed to know what classpath to compile the dependency source with.
           interactiveSemanticdbs.didDefinition(source, value)

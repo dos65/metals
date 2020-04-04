@@ -171,6 +171,8 @@ case class QuickBuild(
       baseDirectory,
       Some(workspace.toNIO),
       sources,
+      None,
+      None,
       dependsOn.toList,
       classpath,
       out,

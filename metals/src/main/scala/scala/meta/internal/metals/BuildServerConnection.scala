@@ -22,6 +22,7 @@ import java.io.IOException
 import org.eclipse.lsp4j.services.LanguageClient
 import java.util.concurrent.atomic.AtomicReference
 import org.eclipse.lsp4j.jsonrpc.JsonRpcException
+import scala.annotation.meta.param
 
 /**
  * An actively running and initialized BSP connection.
@@ -244,12 +245,14 @@ object BuildServerConnection {
         BuildInfo.bspVersion,
         workspace.toURI.toString,
         new BuildClientCapabilities(
-          Collections.singletonList("scala")
+          // Collections.singletonList("scala")
+          List("scala", "sbt").asJava
         )
       )
       val gson = new Gson
       val data = gson.toJsonTree(extraParams)
       params.setData(data)
+      scribe.info(s"Call initialize $params")
       params
     }
     // Block on the `build/initialize` request because it should respond instantly

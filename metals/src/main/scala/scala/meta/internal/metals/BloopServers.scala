@@ -37,7 +37,10 @@ final class BloopServers(
   def shutdownServer(): Boolean = {
     val dummyIn = new ByteArrayInputStream(new Array(0))
     val cli = new BloopgunCli(
-      BuildInfo.bloopVersion,
+      //BuildInfo.bloopVersion,
+      //"1.3.4-444-7af2eba4-20200328-1726",
+      //"1.3.4-445-2a85677f-20200401-2343",
+      "1.3.4-445-2a85677f-20200401-2349",
       dummyIn,
       System.out,
       System.err,
@@ -54,12 +57,15 @@ final class BloopServers(
   }
 
   def newServer(
-      userConfiguration: UserConfiguration
+      userConfiguration: UserConfiguration,
+      targetWorkspace: AbsolutePath
   ): Future[Option[BuildServerConnection]] = {
-    val bloopVersion = userConfiguration.bloopVersion
+    //val bloopVersion = userConfiguration.bloopVersion
+    //val bloopVersion = "1.3.4-444-7af2eba4-20200328-1726"
+    val bloopVersion = "1.3.4-445-2a85677f-20200401-2349"
     BuildServerConnection
       .fromSockets(
-        workspace,
+        targetWorkspace,
         client,
         languageClient,
         () => connectToLauncher(bloopVersion),

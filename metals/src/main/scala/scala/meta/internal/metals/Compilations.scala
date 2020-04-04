@@ -14,7 +14,8 @@ final class Compilations(
     buildTargets: BuildTargets,
     classes: BuildTargetClasses,
     workspace: () => AbsolutePath,
-    buildServer: () => Option[BuildServerConnection],
+    //buildServer: () => Option[BuildServerConnection],
+    buildServers: b.BuildTargetIdentifier => Option[BuildServerConnection],
     languageClient: MetalsLanguageClient,
     isCurrentlyFocused: b.BuildTargetIdentifier => Boolean,
     compileWorksheets: Seq[AbsolutePath] => Future[Unit]
@@ -55,6 +56,7 @@ final class Compilations(
   def cascadeCompileFiles(paths: Seq[AbsolutePath]): Future[b.CompileResult] = {
     val targets =
       expand(paths).flatMap(buildTargets.inverseDependencies).distinct
+    scribe.info(s"target: $targets")
     for {
       result <- cascadeBatch(targets)
       _ <- compileWorksheets(paths)
@@ -83,14 +85,31 @@ final class Compilations(
   private def compile(
       targets: Seq[b.BuildTargetIdentifier]
   ): CancelableFuture[b.CompileResult] = {
-    val result = for {
-      connection <- buildServer()
-      if targets.nonEmpty
-    } yield compile(connection, targets)
-
-    result.getOrElse {
+    if (targets.isEmpty) {
       val result = new b.CompileResult(b.StatusCode.CANCELLED)
       Future.successful(result).asCancelable
+    } else {
+      val all = targets.map(t => {
+        buildServers(t) match {
+          case Some(connection) =>
+            compile(connection, Seq(t))
+          case None =>
+            val result = new b.CompileResult(b.StatusCode.CANCELLED)
+            Future.successful(result).asCancelable
+        }
+      })
+      CancelableFuture
+        .sequence(all)
+        .map(results => {
+          val maybeCancel =
+            results.find(_.getStatusCode == b.StatusCode.CANCELLED)
+          val maybeErr = results.find(_.getStatusCode == b.StatusCode.ERROR)
+          (maybeCancel, maybeErr) match {
+            case (_, Some(err)) => err
+            case (Some(cancel), _) => cancel
+            case _ => new b.CompileResult(b.StatusCode.OK)
+          }
+        })
     }
   }
 

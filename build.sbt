@@ -151,7 +151,8 @@ lazy val V = new {
   val scalameta = "4.3.0"
   val semanticdb = scalameta
   val bsp = "2.0.0-M4+10-61e61e87"
-  val bloop = "1.4.0-RC1+33-dfd03f53"
+  val bloop = "1.4.0-RC1-105-118a551b"
+  //val bloop = "1.3.4-386-d098adda-20200215-2234"
   val bloopNightly = bloop
   val sbtBloop = bloop
   val gradleBloop = bloop
@@ -213,7 +214,8 @@ lazy val mtags = project
       "org.lz4" % "lz4-java" % "1.7.1", // for streaming hashing when indexing classpaths
       "com.lihaoyi" %% "geny" % genyVersion.value,
       "org.scala-lang.modules" %% "scala-java8-compat" % "0.9.0",
-      "org.scalameta" % "semanticdb-scalac-core" % V.scalameta cross CrossVersion.full
+      "org.scalameta" % "semanticdb-scalac-core" % V.scalameta cross CrossVersion.full,
+      "com.outr" %% "scribe" % "2.7.10"
     ),
     libraryDependencies ++= {
       if (isCI) Nil
@@ -289,7 +291,8 @@ lazy val metals = project
       // for debugging purposes, not strictly needed but nice for productivity
       "com.lihaoyi" %% "pprint" % "0.5.9",
       // For exporting Pants builds.
-      "com.lihaoyi" %% "ujson" % "0.9.9",
+      //"com.lihaoyi" %% "ujson" % "0.9.9",
+      "com.lihaoyi" %% "upickle" % "0.9.9",
       "ch.epfl.scala" %% "bloop-config" % V.bloop,
       // for producing SemanticDB from Scala source files
       "org.scalameta" %% "scalameta" % V.scalameta,

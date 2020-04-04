@@ -77,6 +77,12 @@ final class BloopInstall(
     pb.environment().put("COURSIER_PROGRESS", "disable")
     pb.environment().put("METALS_ENABLED", "true")
     pb.environment().put("SCALAMETA_VERSION", BuildInfo.semanticdbVersion)
+
+    val argS = args.mkString(" ")
+    val pwd = workspace.toNIO
+
+    scribe.info(s"Process pwd:${pwd}, ${argS}")
+
     val runningProcess = pb.start()
     // NOTE(olafur): older versions of VS Code don't respect cancellation of
     // window/showMessageRequest, meaning the "cancel build import" button

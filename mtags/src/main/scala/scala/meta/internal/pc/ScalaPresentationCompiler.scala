@@ -158,6 +158,7 @@ case class ScalaPresentationCompiler(
       filename: String,
       code: String
   ): CompletableFuture[Array[Byte]] = {
+    scribe.info(s"SPC $filename $code")
     access.withInterruptableCompiler(
       Array.emptyByteArray,
       EmptyCancelToken

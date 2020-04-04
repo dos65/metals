@@ -13,7 +13,7 @@ import scala.meta.internal.semanticdb.Scala.Symbols
  * In-memory index of main class symbols grouped by their enclosing build target
  */
 final class BuildTargetClasses(
-    buildServer: () => Option[BuildServerConnection]
+    buildServers: b.BuildTargetIdentifier => Option[BuildServerConnection]
 )(implicit val ec: ExecutionContext) {
   private val index = TrieMap.empty[b.BuildTargetIdentifier, Classes]
 
@@ -31,11 +31,16 @@ final class BuildTargetClasses(
   private def fetchClasses(
       targets: Seq[b.BuildTargetIdentifier]
   ): Future[Unit] = {
-    buildServer() match {
+    Future.sequence(targets.map(t => fetchClasses(t))).map(_ => ())
+  }
+
+  private def fetchClasses(target: b.BuildTargetIdentifier): Future[Unit] = {
+    buildServers(target) match {
+      case None => Future.successful(())
       case Some(connection) =>
-        val targetsList = targets.asJava
-        targetsList.forEach(invalidate)
-        val classes = targets.map(t => (t, new Classes)).toMap
+        val targetsList = List(target).asJava
+        invalidate(target)
+        val classes = Map(target -> new Classes)
 
         val updateMainClasses = connection
           .mainClasses(new b.ScalaMainClassesParams(targetsList))
@@ -53,9 +58,6 @@ final class BuildTargetClasses(
             case (id, classes) => index.put(id, classes)
           }
         }
-
-      case None =>
-        Future.successful(())
     }
   }
 

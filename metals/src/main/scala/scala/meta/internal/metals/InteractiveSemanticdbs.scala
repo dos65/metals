@@ -68,10 +68,12 @@ final class InteractiveSemanticdbs(
   }
 
   override def textDocument(source: AbsolutePath): TextDocumentLookup = {
-    if (!source.toLanguage.isScala ||
-      !source.isDependencySource(workspace)) {
+    scribe.info(s"Intercative semantic db textDocument0 ${source}")
+    if (!(source.toLanguage.isScala || source.isSbt || source
+        .isDependencySource(workspace))) {
       TextDocumentLookup.NotFound(source)
     } else {
+      scribe.info(s"Intercative semantic db textDocument ${source}")
       val result =
         textDocumentCache.computeIfAbsent(source, path => compile(path).orNull)
       TextDocumentLookup.fromOption(source, Option(result))
@@ -128,7 +130,9 @@ final class InteractiveSemanticdbs(
       source: AbsolutePath
   ): Option[BuildTargetIdentifier] = {
     val fromDatabase = tables.dependencySources.getBuildTarget(source)
-    fromDatabase.orElse(inferBuildTarget(source))
+    val out = fromDatabase.orElse(inferBuildTarget(source))
+    scribe.info(s"Interactive smdbs: getBuildTarget ${source} ${out}")
+    out
   }
 
   private def compile(source: AbsolutePath): Option[s.TextDocument] = {
@@ -137,12 +141,19 @@ final class InteractiveSemanticdbs(
       pc <- compilers().loadCompiler(buildTarget)
     } yield {
       val text = FileIO.slurp(source, charset)
+      val finalText = buildTargets.sbtTarget(buildTarget) match {
+        case None => text
+        case Some(sbtData) =>
+          val sbtHeader =
+            sbtData.getAutoImports.asScala.mkString("", "\n", "\n")
+          sbtHeader + text
+      }
       val uri = source.toURI.toString
       // NOTE(olafur): it's unfortunate that we block on `semanticdbTextDocument`
       // here but to avoid it we would need to refactor the `Semanticdbs` trait,
       // which requires more effort than it's worth.
       val bytes = pc
-        .semanticdbTextDocument(uri, text)
+        .semanticdbTextDocument(uri, finalText)
         .get(config.compilers.timeoutDelay, config.compilers.timeoutUnit)
       val textDocument = TextDocument.parseFrom(bytes)
       PlatformTokenizerCache.megaCache.clear() // :facepalm:
@@ -153,7 +164,7 @@ final class InteractiveSemanticdbs(
   private def inferBuildTarget(
       source: AbsolutePath
   ): Option[BuildTargetIdentifier] = {
-    for {
+    val x = (for {
       sourcesJarElement <- readonlyToSource.get(source).iterator
       elementUri = sourcesJarElement.toURI.toString
       uri = elementUri.stripPrefix("jar:").replaceFirst("!/.*", "")
@@ -162,7 +173,8 @@ final class InteractiveSemanticdbs(
     } yield {
       tables.dependencySources.setBuildTarget(source, id)
       id
-    }
-  }.take(1).toList.headOption
+    }).take(1).toList.headOption
 
+    x.orElse(buildTargets.inferBuildTarget(source))
+  }
 }

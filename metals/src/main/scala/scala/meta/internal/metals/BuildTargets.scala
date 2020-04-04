@@ -9,6 +9,7 @@ import ch.epfl.scala.bsp4j.ScalacOptionsItem
 import ch.epfl.scala.bsp4j.ScalacOptionsResult
 import ch.epfl.scala.bsp4j.ScalaBuildTarget
 import ch.epfl.scala.bsp4j.WorkspaceBuildTargetsResult
+import ch.epfl.scala.bsp4j.SbtBuildTarget
 import java.util.concurrent.ConcurrentLinkedQueue
 import scala.annotation.tailrec
 import scala.collection.concurrent.TrieMap
@@ -76,15 +77,22 @@ final class BuildTargets() {
     for {
       (id, target) <- buildTargetInfo.iterator
       scalac <- scalacTargetInfo.get(id)
-      scalaTarget <- target.asScalaBuildTarget
+      scalaTarget <- target.getScalaBuildTarget
     } yield ScalaTarget(target, scalaTarget, scalac)
 
   def scalaTarget(id: BuildTargetIdentifier): Option[ScalaTarget] =
     for {
       info <- buildTargetInfo.get(id)
       scalac <- scalacTargetInfo.get(id)
-      scalaTarget <- info.asScalaBuildTarget
+      scalaTarget <- info.getScalaBuildTarget
     } yield ScalaTarget(info, scalaTarget, scalac)
+
+  def sbtTarget(id: BuildTargetIdentifier): Option[SbtBuildTarget] =
+    for {
+      info <- buildTargetInfo.get(id)
+      // scalac <- scalacTargetInfo.get(id)
+      sbtTarget <- info.getSbtBuildTarget
+    } yield sbtTarget
 
   def allWorkspaceJars: Iterator[AbsolutePath] = {
     val isVisited = new ju.HashSet[AbsolutePath]()
@@ -187,7 +195,7 @@ final class BuildTargets() {
   def scalaInfo(
       buildTarget: BuildTargetIdentifier
   ): Option[ScalaBuildTarget] =
-    info(buildTarget).flatMap(_.asScalaBuildTarget)
+    info(buildTarget).flatMap(_.getScalaBuildTarget)
 
   def scalacOptions(
       buildTarget: BuildTargetIdentifier
@@ -254,8 +262,15 @@ final class BuildTargets() {
   def inferBuildTarget(
       source: AbsolutePath
   ): Option[BuildTargetIdentifier] = {
+    scribe.info(s"Build targets: inferBuildTarget0: $source")
     if (source.isDependencySource(workspace)) {
       Try(unsafeInferBuildTarget(source)).getOrElse(None)
+    } else if (source.isSbt) {
+      buildTargetInfo.values
+        .find(t => {
+          t.getDisplayName().endsWith("-build")
+        })
+        .map(_.getId())
     } else {
       val fromInference =
         buildTargetInference.asScala.flatMap(fn => fn(source))

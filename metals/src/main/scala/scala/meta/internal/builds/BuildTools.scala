@@ -87,7 +87,8 @@ final class BuildTools(
     all.isEmpty
   }
   def loadSupported(): Option[BuildTool] = {
-    if (isSbt) Some(SbtBuildTool(workspace, userConfig, config))
+    if (isSbt)
+      Some(SbtBuildTool(workspace.resolve("project"), userConfig, config))
     else if (isGradle) Some(GradleBuildTool(userConfig))
     else if (isMaven) Some(MavenBuildTool(userConfig))
     else if (isMill) Some(MillBuildTool(userConfig))

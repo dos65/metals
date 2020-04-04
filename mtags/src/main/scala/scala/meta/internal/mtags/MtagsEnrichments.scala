@@ -154,6 +154,9 @@ trait MtagsEnrichments {
     def isScala: Boolean = {
       toLanguage == Language.SCALA
     }
+    def isSbt: Boolean = {
+      filename.endsWith(".sbt")
+    }
     def isJava: Boolean = {
       toLanguage == Language.JAVA
     }
@@ -258,11 +261,12 @@ trait MtagsEnrichments {
       }
   }
   implicit class XtensionStringDoc(doc: String) {
+    def isSbt: Boolean =
+      doc.endsWith(".sbt")
     def isScalaScript: Boolean =
       doc.endsWith(".sc")
     def isScalaFilename: Boolean =
-      doc.endsWith(".scala") ||
-        doc.endsWith(".sc")
+      doc.endsWith(".scala") || isScalaScript || isSbt
     def asSymbol: Symbol = Symbol(doc)
     def endsWithAt(value: String, offset: Int): Boolean = {
       val start = offset - value.length

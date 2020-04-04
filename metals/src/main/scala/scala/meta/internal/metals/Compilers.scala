@@ -4,6 +4,7 @@ import ch.epfl.scala.bsp4j.BuildTargetIdentifier
 import ch.epfl.scala.bsp4j.CompileReport
 import ch.epfl.scala.bsp4j.ScalaBuildTarget
 import ch.epfl.scala.bsp4j.ScalacOptionsItem
+import ch.epfl.scala.bsp4j.SbtBuildTarget
 import java.util.Collections
 import java.util.concurrent.ScheduledExecutorService
 import org.eclipse.lsp4j.InitializeParams
@@ -215,6 +216,7 @@ class Compilers(
       path: AbsolutePath,
       interactiveSemanticdbs: Option[InteractiveSemanticdbs]
   ): Option[PresentationCompiler] = {
+    scribe.info(s"COMPILERS loadcompile 0: ${path}")
     val target = buildTargets
       .inverseSources(path)
       .orElse(interactiveSemanticdbs.flatMap(_.getBuildTarget(path)))
@@ -222,13 +224,16 @@ class Compilers(
       case None =>
         if (path.isScalaFilename) Some(ramboCompiler)
         else None
-      case Some(value) => loadCompiler(value)
+      case Some(value) =>
+        scribe.info(s"COMPILERS loadcompile: ${path}")
+        loadCompiler(value)
     }
   }
 
   def loadCompiler(
       target: BuildTargetIdentifier
   ): Option[PresentationCompiler] = {
+    scribe.info(s"COMPILERS loadcompiler: ${target}")
     for {
       info <- buildTargets.scalaTarget(target)
       isSupported = ScalaVersions.isSupportedScalaVersion(info.scalaVersion)
@@ -245,7 +250,7 @@ class Compilers(
           statusBar.trackBlockingTask(
             s"${statusBar.icons.sync}Loading presentation compiler"
           ) {
-            newCompiler(scalac, info.scalaInfo)
+            newCompiler(scalac, info.scalaInfo, buildTargets.sbtTarget(target))
           }
         }
       )
@@ -261,8 +266,27 @@ class Compilers(
       val input = path
         .toInputFromBuffers(buffers)
         .copy(path = params.getTextDocument.getUri())
+
       val pos = params.getPosition.toMeta(input)
-      val result = fn(compiler, pos)
+      val fixed =
+        if (path.isSbt) {
+          val imports = List(
+            "import _root_.scala.xml.{TopScope=>$scope}", "import _root_.sbt._",
+            "import _root_.sbt.Keys._", "import _root_.sbt.nio.Keys._",
+            "import _root_.sbt.ScriptedPlugin.autoImport._, _root_.bloop.integrations.sbt.BloopPlugin.autoImport._",
+            "import _root_.sbt.plugins.IvyPlugin, _root_.sbt.plugins.JvmPlugin, _root_.sbt.plugins.CorePlugin, _root_.sbt.ScriptedPlugin, _root_.sbt.plugins.SbtPlugin, _root_.sbt.plugins.SemanticdbPlugin, _root_.sbt.plugins.JUnitXmlReportPlugin, _root_.sbt.plugins.Giter8TemplatePlugin, _root_.bloop.integrations.sbt.BloopPlugin"
+          )
+          val header = imports.mkString("", "\n", "\n")
+          pos match {
+            case Position.Range(i, st, end) =>
+              val fixedInput = input.copy(value = header + input.value)
+              Position.Range(fixedInput, st + header.size, end + header.size)
+            case Position.None => Position.None
+          }
+
+        } else pos
+
+      val result = fn(compiler, fixed)
       result
     }
   }
@@ -281,13 +305,15 @@ class Compilers(
 
   def newCompiler(
       scalac: ScalacOptionsItem,
-      info: ScalaBuildTarget
+      info: ScalaBuildTarget,
+      sbtData: Option[SbtBuildTarget]
   ): PresentationCompiler = {
     val classpath = scalac.classpath.map(_.toNIO).toSeq
     // The metals_2.12 artifact depends on mtags_2.12.x where "x" matches
     // `mtags.BuildInfo.scalaCompilerVersion`. In the case when
     // `info.getScalaVersion == mtags.BuildInfo.scalaCompilerVersion` then we
     // skip fetching the mtags module from Maven.
+    scribe.info(s"new Compiler HERE!!!! ${sbtData}")
     val pc: PresentationCompiler =
       if (ScalaVersions.isCurrentScalaCompilerVersion(info.getScalaVersion())) {
         new ScalaPresentationCompiler()

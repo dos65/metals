@@ -9,6 +9,10 @@ case class CancelableFuture[T](
   def cancel(): Unit = {
     cancelable.cancel()
   }
+
+  def map[B](f: T => B)(implicit ec: ExecutionContext): CancelableFuture[B] = {
+    CancelableFuture(future.map(f), cancelable)
+  }
 }
 
 object CancelableFuture {
@@ -19,4 +23,17 @@ object CancelableFuture {
   }
   def successful[T](value: T): CancelableFuture[T] =
     CancelableFuture(Future.successful(value))
+
+  def sequence[T](
+      fs: Seq[CancelableFuture[T]]
+  )(implicit ec: ExecutionContext): CancelableFuture[Seq[T]] = {
+    val (f, c) = fs.foldLeft((List.empty[Future[T]], List.empty[Cancelable]))({
+      case ((facc, cacc), x) => (x.future :: facc, x.cancelable :: cacc)
+    })
+    CancelableFuture(
+      Future.sequence(f),
+      Cancelable(() => Cancelable.cancelAll(c))
+    )
+  }
+
 }

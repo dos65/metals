@@ -83,7 +83,8 @@ case class SbtBuildTool(
       config: MetalsServerConfig
   ): Unit = {
     if (userConfig().bloopSbtAlreadyInstalled) return
-    val versionToUse = userConfig().bloopVersion
+    //val versionToUse = userConfig().bloopVersion
+    val versionToUse = "1.3.4-444-7af2eba4-20200328-1951"
     val bytes = SbtBuildTool
       .sbtPlugin(versionToUse)
       .getBytes(StandardCharsets.UTF_8)
@@ -94,6 +95,13 @@ case class SbtBuildTool(
       !metalsPluginFile.readAllBytes.sameElements(bytes)
     if (pluginFileShouldChange) {
       Files.write(metalsPluginFile.toNIO, bytes)
+    }
+    val props = projectDir.resolve("build.properties")
+    if (!props.toFile.exists) {
+      Files.write(
+        props.toNIO,
+        "sbt.version=1.3.0".getBytes(StandardCharsets.UTF_8)
+      )
     }
   }
 

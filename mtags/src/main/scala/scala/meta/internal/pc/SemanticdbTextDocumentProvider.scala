@@ -9,12 +9,17 @@ class SemanticdbTextDocumentProvider(val compiler: MetalsGlobal) {
       filename: String,
       code: String
   ): s.TextDocument = {
+    scribe.info(s"SMTDP ${filename}")
     val unit = addCompilationUnit(
       code = code,
       filename = filename,
       cursor = None
     )
     typeCheck(unit)
+
+    scribe.info(
+      s"SMTDP ${unit.status} ${unit.isParsed} ${unit.isTypeChecked}\n ${unit.lastBody}"
+    )
     semanticdbOps.config = SemanticdbConfig.parse(
       List(
         "-P:semanticdb:synthetics:on",

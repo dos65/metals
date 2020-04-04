@@ -30,6 +30,7 @@ final class FileSystemSemanticdbs(
             charset,
             fingerprints,
             semanticdbRelativePath => {
+              scribe.info(s"Try load from $semanticdbRelativePath $targetroot")
               val semanticdbpath = targetroot.resolve(semanticdbRelativePath)
               if (semanticdbpath.isFile) Some(semanticdbpath)
               else None
