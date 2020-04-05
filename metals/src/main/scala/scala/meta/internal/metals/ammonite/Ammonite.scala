@@ -30,10 +30,7 @@ import ammrunner.VersionsOption
 import ammrunner.{Command => AmmCommand}
 import ammrunner.{Versions => AmmVersions}
 import ch.epfl.scala.bsp4j.BuildTargetIdentifier
-import org.eclipse.lsp4j.CompletionList
-import org.eclipse.lsp4j.Hover
 import org.eclipse.lsp4j.Position
-import org.eclipse.lsp4j.{Range => LspRange}
 
 final class Ammonite(
     buffers: Buffers,
@@ -376,39 +373,8 @@ object Ammonite {
       identity _
   }
 
-  private def adjustRange(
-      range: LspRange,
-      adjustPos: Position => Position
-  ): LspRange =
-    new LspRange(
-      adjustPos(range.getStart),
-      adjustPos(range.getEnd)
-    )
-
-  def adjustHoverResp(hover: Hover, scalaCode: String): Hover =
-    if (hover.getRange == null)
-      hover
-    else {
-      val adjustPos = adjustPosition(scalaCode)
-      val newRange = adjustRange(hover.getRange, adjustPos)
-      val newHover = new Hover
-      newHover.setContents(hover.getContents)
-      newHover.setRange(newRange)
-      newHover
-    }
-
-  def adjustCompletionListInPlace(
-      list: CompletionList,
-      scalaCode: String
-  ): Unit = {
-    val adjustPos = adjustPosition(scalaCode)
-    for (item <- list.getItems.asScala) {
-      for (textEdit <- Option(item.getTextEdit))
-        textEdit.setRange(adjustRange(textEdit.getRange, adjustPos))
-      for (l <- Option(item.getAdditionalTextEdits); textEdit <- l.asScala)
-        textEdit.setRange(adjustRange(textEdit.getRange, adjustPos))
-    }
-  }
+  def adjustLspData(scalaCode: String): AdjustLspData =
+    AdjustLspData.create(adjustPosition(scalaCode))
 
   def adjustImportResult(
       autoImportResult: AutoImportsResult,

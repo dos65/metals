@@ -11,6 +11,7 @@ import scala.meta.io.AbsolutePath
 object TestingWorkspaceSymbolProvider {
   def apply(
       workspace: AbsolutePath,
+      buildTargets: BuildTargets = BuildTargets.withoutAmmonite,
       statistics: StatisticsConfig = StatisticsConfig.default,
       index: OnDemandSymbolIndex = OnDemandSymbolIndex(),
       bucketSize: Int = CompressedPackageIndex.DefaultBucketSize
@@ -18,7 +19,7 @@ object TestingWorkspaceSymbolProvider {
     new WorkspaceSymbolProvider(
       workspace = workspace,
       statistics = statistics,
-      buildTargets = new BuildTargets,
+      buildTargets = buildTargets,
       index = index,
       _.toFileOnDisk(workspace),
       bucketSize = bucketSize
