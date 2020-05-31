@@ -1,15 +1,17 @@
 package tests.pc
 
+import scala.collection.Seq
+
 import scala.meta.internal.pc.PresentationCompilerConfigImpl
 import scala.meta.pc.PresentationCompilerConfig
+
 import tests.BaseCompletionSuite
-import scala.collection.Seq
 import tests.BuildInfoVersions
 
 class CompletionParameterHintSuite extends BaseCompletionSuite {
 
   override def excludedScalaVersions: Set[String] =
-    Set(BuildInfoVersions.scala3)
+    BuildInfoVersions.scala3Versions.toSet
 
   override def config: PresentationCompilerConfig =
     PresentationCompilerConfigImpl(

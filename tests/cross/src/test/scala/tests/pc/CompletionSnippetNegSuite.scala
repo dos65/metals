@@ -1,8 +1,9 @@
 package tests.pc
 
-import tests.BaseCompletionSuite
-import scala.meta.pc.PresentationCompilerConfig
 import scala.meta.internal.pc.PresentationCompilerConfigImpl
+import scala.meta.pc.PresentationCompilerConfig
+
+import tests.BaseCompletionSuite
 import tests.BuildInfoVersions
 
 class CompletionSnippetNegSuite extends BaseCompletionSuite {
@@ -70,7 +71,7 @@ class CompletionSnippetNegSuite extends BaseCompletionSuite {
   )
 
   checkSnippet(
-    "type".tag(IgnoreScalaVersion(BuildInfoVersions.scala3)),
+    "type".tag(IgnoreScalaVersion(BuildInfoVersions.scala3Versions)),
     s"""|object Main {
         |  val x: scala.IndexedSe@@
         |}

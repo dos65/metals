@@ -1,8 +1,5 @@
 package bill
 
-import ch.epfl.scala.bsp4j._
-import ch.epfl.scala.{bsp4j => b}
-import com.google.gson.GsonBuilder
 import java.io.File
 import java.io.PrintStream
 import java.io.PrintWriter
@@ -17,30 +14,37 @@ import java.util.Collections
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.Executors
 import java.util.stream.Collectors
-import coursierapi.Dependency
-import coursierapi.Fetch
-import org.eclipse.lsp4j.jsonrpc.Launcher
+
 import scala.collection.mutable
 import scala.concurrent.Await
+import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
-import scala.meta.internal.metals.BuildInfo
-import scala.meta.internal.metals.MetalsLogger
-import scala.meta.internal.metals.RecursivelyDelete
-import scala.meta.internal.metals.MetalsEnrichments._
-import scala.meta.internal.metals.PositionSyntax._
+import scala.concurrent.duration.Duration
 import scala.reflect.internal.util.BatchSourceFile
 import scala.reflect.internal.{util => r}
 import scala.reflect.io.AbstractFile
 import scala.reflect.io.VirtualFile
 import scala.tools.nsc
 import scala.tools.nsc.reporters.StoreReporter
+import scala.util.Try
 import scala.util.control.NonFatal
-import scala.concurrent.ExecutionContext.Implicits.global
-import scala.concurrent.duration.Duration
+
+import scala.meta.internal.metals.BuildInfo
 import scala.meta.internal.metals.Embedded
+import scala.meta.internal.metals.MetalsEnrichments._
+import scala.meta.internal.metals.MetalsLogger
+import scala.meta.internal.metals.PositionSyntax._
+import scala.meta.internal.metals.RecursivelyDelete
 import scala.meta.internal.mtags
 import scala.meta.internal.mtags.ClasspathLoader
 import scala.meta.io.AbsolutePath
+
+import ch.epfl.scala.bsp4j._
+import ch.epfl.scala.{bsp4j => b}
+import com.google.gson.GsonBuilder
+import coursierapi.Dependency
+import coursierapi.Fetch
+import org.eclipse.lsp4j.jsonrpc.Launcher
 
 /**
  * Bill is a basic build tool that implements BSP server discovery for testing purposes.
@@ -76,6 +80,27 @@ object Bill {
     // Returns true if we're tracing shutdown requests, used for testing purposes.
     def isShutdownTrace(): Boolean = {
       Files.isRegularFile(workspace.resolve("shutdown-trace"))
+    }
+
+    def firstShutdownTimeout(): Option[Long] = {
+      val fileName = "first-shutdown-timeout"
+      val shouldShutdown =
+        Files.isRegularFile(workspace.resolve(fileName))
+      if (shouldShutdown) {
+        val timeout = Try {
+          Files
+            .readAllLines(workspace.resolve(fileName))
+            .asScala
+            .headOption
+            .mkString
+            .trim()
+            .toLong
+        }.toOption
+        Files.delete(workspace.resolve(fileName))
+        timeout
+      } else {
+        None
+      }
     }
     def src: Path = workspace.resolve("src")
     def scalaJars: util.List[String] =
@@ -379,6 +404,12 @@ object Bill {
         .create()
       server.client = launcher.getRemoteProxy
       val listening = launcher.startListening()
+      server.firstShutdownTimeout().foreach { timeout =>
+        Future {
+          Thread.sleep(timeout)
+          System.exit(1)
+        }
+      }
       listening.get()
     } catch {
       case NonFatal(e) =>

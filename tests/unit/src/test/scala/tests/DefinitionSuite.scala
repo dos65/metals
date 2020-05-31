@@ -3,11 +3,12 @@ package tests
 import scala.meta._
 import scala.meta.internal.inputs._
 import scala.meta.internal.metals.JdkSources
+import scala.meta.internal.metals.Trees
+import scala.meta.internal.mtags.OnDemandSymbolIndex
+import scala.meta.internal.mtags.Semanticdbs
+import scala.meta.internal.mtags.Symbol
 import scala.meta.internal.semanticdb.Scala._
 import scala.meta.internal.{semanticdb => s}
-import scala.meta.internal.mtags.Semanticdbs
-import scala.meta.internal.mtags.OnDemandSymbolIndex
-import scala.meta.internal.mtags.Symbol
 
 /**
  * Assert that every identifier has a definition and every non-identifier has no definition.
@@ -43,7 +44,7 @@ class DefinitionSuite extends DirectoryExpectSuite("definition") {
       ExpectTestCase(
         file, { () =>
           val input = file.input
-          val tokens = input.tokenize.get
+          val tokens = Trees.defaultDialect(input).tokenize.get
           val sb = new StringBuilder
           tokens.foreach(token => {
             sb.append(token.syntax)

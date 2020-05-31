@@ -1,12 +1,15 @@
 package tests.debug
-import tests.BaseDapSuite
 import scala.meta.internal.metals.debug.DebugStep._
 import scala.meta.internal.metals.debug.DebugWorkspaceLayout
 import scala.meta.internal.metals.debug.StepNavigator
 import scala.meta.internal.metals.debug.Stoppage
+
 import munit.Location
 import munit.TestOptions
+import tests.BaseDapSuite
 
+// note(@tgodzik) all test have `System.exit(0)` added to avoid occasional issue due to:
+// https://stackoverflow.com/questions/2225737/error-jdwp-unable-to-get-jni-1-2-environment
 class BreakpointDapSuite extends BaseDapSuite("debug-breakpoint") {
 
   // disabled, because finding enclosing class for the breakpoint line is not working
@@ -20,6 +23,7 @@ class BreakpointDapSuite extends BaseDapSuite("debug-breakpoint") {
                 |
                 |  def main(args: Array[String]): Unit = {
                 |>>  println()
+                |    System.exit(0)
                 |  }
                 |}
                 |""".stripMargin
@@ -33,6 +37,7 @@ class BreakpointDapSuite extends BaseDapSuite("debug-breakpoint") {
                 |  // this line must remain empty
                 |  def main(args: Array[String]): Unit = {
                 |>>  println()
+                |    System.exit(0)
                 |  }
                 |  class Succeeding
                 |}
@@ -52,6 +57,7 @@ class BreakpointDapSuite extends BaseDapSuite("debug-breakpoint") {
                 |object Main {
                 |  def main(args: Array[String]): Unit = {
                 |    Bar.call()
+                |    System.exit(0)
                 |  }
                 |}
                 |""".stripMargin
@@ -70,6 +76,7 @@ class BreakpointDapSuite extends BaseDapSuite("debug-breakpoint") {
                 |object Main {
                 |  def main(args: Array[String]): Unit = {
                 |    Bar()
+                |    System.exit(0)
                 |  }
                 |}
                 |""".stripMargin
@@ -90,6 +97,7 @@ class BreakpointDapSuite extends BaseDapSuite("debug-breakpoint") {
                 |    this match {
                 |      case Bar() =>
                 |    }
+                |    System.exit(0)
                 |  }
                 |}
                 |""".stripMargin
@@ -109,6 +117,7 @@ class BreakpointDapSuite extends BaseDapSuite("debug-breakpoint") {
                 |  def main(args: Array[String]): Unit = {
                 |    val bar = new Bar {}
                 |    bar.call()
+                |    System.exit(0)
                 |  }
                 |}
                 |""".stripMargin
@@ -128,6 +137,7 @@ class BreakpointDapSuite extends BaseDapSuite("debug-breakpoint") {
                 |  def main(args: Array[String]): Unit = {
                 |    val bar = new Bar
                 |    bar.call()
+                |    System.exit(0)
                 |  }
                 |}
                 |""".stripMargin
@@ -147,6 +157,7 @@ class BreakpointDapSuite extends BaseDapSuite("debug-breakpoint") {
                 |      }
                 |    }
                 |    bar.call()
+                |    System.exit(0)
                 |  }
                 |}
                 |""".stripMargin
@@ -166,6 +177,7 @@ class BreakpointDapSuite extends BaseDapSuite("debug-breakpoint") {
                 |  def main(args: Array[String]): Unit = {
                 |    val bar = new Bar
                 |    bar.call()
+                |    System.exit(0)
                 |  }
                 |}
                 |""".stripMargin
@@ -188,6 +200,7 @@ class BreakpointDapSuite extends BaseDapSuite("debug-breakpoint") {
                 |      case bar(1) => println()
                 |      case _ =>
                 |    }
+                |    System.exit(0)
                 |  }
                 |}
 
@@ -209,6 +222,7 @@ class BreakpointDapSuite extends BaseDapSuite("debug-breakpoint") {
                 |object Main {
                 |  def main(args: Array[String]): Unit = {
                 |    Bar.call()
+                |    System.exit(0)
                 |  }
                 |}
                 |""".stripMargin
@@ -229,6 +243,7 @@ class BreakpointDapSuite extends BaseDapSuite("debug-breakpoint") {
                 |object Main {
                 |  def main(args: Array[String]): Unit = {
                 |    Bar()
+                |    System.exit(0)
                 |  }
                 |}
                 |""".stripMargin
@@ -243,6 +258,7 @@ class BreakpointDapSuite extends BaseDapSuite("debug-breakpoint") {
                 |    for {
                 |>>    x <- List()
                 |    } println(x)
+                |    System.exit(0)
                 |  }
                 |}
                 |""".stripMargin
@@ -259,6 +275,7 @@ class BreakpointDapSuite extends BaseDapSuite("debug-breakpoint") {
                 |  } {
                 |>>    println(x)
                 |    }
+                |    System.exit(0)
                 |  }
                 |}
                 |""".stripMargin
@@ -275,6 +292,7 @@ class BreakpointDapSuite extends BaseDapSuite("debug-breakpoint") {
                 |    } yield {
                 |>>    println(x)
                 |    }
+                |    System.exit(0)
                 |  }
                 |}
                 |""".stripMargin
@@ -296,6 +314,7 @@ class BreakpointDapSuite extends BaseDapSuite("debug-breakpoint") {
                 |  def main(args: Array[String]): Unit = {
                 |    val foo = new Foo {}
                 |    foo.Bar.call()
+                |    System.exit(0)
                 |  }
                 |}
                 |""".stripMargin
@@ -317,6 +336,7 @@ class BreakpointDapSuite extends BaseDapSuite("debug-breakpoint") {
                 |  def main(args: Array[String]): Unit = {
                 |    val bar = new Bar
                 |    bar.call()
+                |    System.exit(0)
                 |  }
                 |}
                 |""".stripMargin
@@ -338,6 +358,7 @@ class BreakpointDapSuite extends BaseDapSuite("debug-breakpoint") {
                 |  def main(args: Array[String]): Unit = {
                 |    val bar = new Bar {}
                 |    bar.call()
+                |    System.exit(0)
                 |  }
                 |}
                 |""".stripMargin
@@ -356,6 +377,7 @@ class BreakpointDapSuite extends BaseDapSuite("debug-breakpoint") {
                 |object Main {
                 |    def main(args: Array[String]): Unit = {
                 |      call()
+                |      System.exit(0)
                 |    }
                 |}
                 |""".stripMargin
@@ -369,6 +391,7 @@ class BreakpointDapSuite extends BaseDapSuite("debug-breakpoint") {
                 |    List(1).foreach{ e =>
                 |>>    println(e)
                 |    }
+                |    System.exit(0);
                 |  }
                 |}
                 |""".stripMargin
@@ -380,6 +403,7 @@ class BreakpointDapSuite extends BaseDapSuite("debug-breakpoint") {
                 |object Main {
                 |  def main(args: Array[String]): Unit = {
                 |    Foo.A.call()
+                |    System.exit(0)
                 |  }
                 |}
                 |
@@ -402,6 +426,7 @@ class BreakpointDapSuite extends BaseDapSuite("debug-breakpoint") {
                 |object Main {
                 |  def main(args: Array[String]): Unit = {
                 |    Foo.call()
+                |    System.exit(0)
                 |  }
                 |}
                 |
@@ -422,6 +447,7 @@ class BreakpointDapSuite extends BaseDapSuite("debug-breakpoint") {
                 |object Main {
                 |  def main(args: Array[String]): Unit = {
                 |    Foo.call()
+                |    System.exit(0)
                 |  }
                 |}
                 |
@@ -446,6 +472,7 @@ class BreakpointDapSuite extends BaseDapSuite("debug-breakpoint") {
                 |object Main {
                 |  def main(args: Array[String]): Unit = {
                 |    Foo.call()
+                |    System.exit(0)
                 |  }
                 |}
                 |
@@ -474,6 +501,7 @@ class BreakpointDapSuite extends BaseDapSuite("debug-breakpoint") {
                 |object Main {
                 |  def main(args: Array[String]): Unit = {
                 |    Foo.call()
+                |    System.exit(0)
                 |  }
                 |}
                 |
@@ -513,6 +541,7 @@ class BreakpointDapSuite extends BaseDapSuite("debug-breakpoint") {
                 |object Main {
                 |    def main(args: Array[String]): Unit = {
                 |      a.Foo.call()
+                |      System.exit(0)
                 |    }
                 |}
                 |""".stripMargin
@@ -533,6 +562,7 @@ class BreakpointDapSuite extends BaseDapSuite("debug-breakpoint") {
                 |object Main {
                 |    def main(args: Array[String]): Unit = {
                 |      not.matching.Foo.call()
+                |      System.exit(0)
                 |    }
                 |}
                 |""".stripMargin
@@ -545,6 +575,7 @@ class BreakpointDapSuite extends BaseDapSuite("debug-breakpoint") {
                 |object Main {
                 |    def main(args: Array[String]): Unit = {
                 |      foo.Target.call()
+                |      System.exit(0)
                 |    }
                 |}
                 |
@@ -577,6 +608,7 @@ class BreakpointDapSuite extends BaseDapSuite("debug-breakpoint") {
          |>>  println(1)
          |>>  println(2)
          |>>  println(3)
+         |    System.exit(0)
          |  }
          |}
          |""".stripMargin

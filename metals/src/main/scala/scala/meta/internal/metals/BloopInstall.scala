@@ -2,17 +2,22 @@ package scala.meta.internal.metals
 
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
-import com.zaxxer.nuprocess.NuProcessBuilder
+
 import scala.concurrent.ExecutionContext
 import scala.concurrent.Future
-import scala.meta.internal.builds.Digest
-import scala.meta.internal.builds.Digest.Status
+
 import scala.meta.internal.builds.BuildTool
 import scala.meta.internal.builds.BuildTools
+import scala.meta.internal.builds.Digest
+import scala.meta.internal.builds.Digest.Status
+import scala.meta.internal.metals.Messages._
 import scala.meta.internal.metals.MetalsEnrichments._
-import scala.meta.io.AbsolutePath
-import scala.meta.internal.process.ProcessHandler
 import scala.meta.internal.process.ExitCodes
+import scala.meta.internal.process.ProcessHandler
+import scala.meta.io.AbsolutePath
+
+import com.zaxxer.nuprocess.NuProcessBuilder
+import org.eclipse.lsp4j.MessageActionItem
 
 /**
  * Runs `sbt/gradle/mill/mvn bloopInstall` processes.
@@ -29,14 +34,11 @@ final class BloopInstall(
     buildTools: BuildTools,
     time: Time,
     tables: Tables,
-    messages: Messages,
-    config: MetalsServerConfig,
     embedded: Embedded,
     statusBar: StatusBar,
     userConfig: () => UserConfiguration
 )(implicit ec: ExecutionContext)
     extends Cancelable {
-  import messages._
   private val cancelables = new MutableCancelable()
   override def cancel(): Unit = {
     cancelables.cancel()
@@ -168,6 +170,15 @@ final class BloopInstall(
     }
   }
 
+  def checkForChosenBuildTool(
+      buildTools: List[BuildTool]
+  ): Future[Option[BuildTool]] =
+    tables.buildTool.selectedBuildTool match {
+      case Some(chosen) =>
+        Future(buildTools.find(_.executableName == chosen))
+      case None => requestBuildToolChoice(buildTools)
+    }
+
   private def persistChecksumStatus(
       status: Status,
       buildTool: BuildTool
@@ -203,4 +214,20 @@ final class BloopInstall(
       }
   }
 
+  private def requestBuildToolChoice(
+      buildTools: List[BuildTool]
+  ): Future[Option[BuildTool]] = {
+    languageClient
+      .showMessageRequest(ChooseBuildTool.params(buildTools))
+      .asScala
+      .map { choice =>
+        val foundBuildTool = buildTools.find(buildTool =>
+          new MessageActionItem(buildTool.executableName) == choice
+        )
+        foundBuildTool.foreach(buildTool =>
+          tables.buildTool.chooseBuildTool(buildTool.executableName)
+        )
+        foundBuildTool
+      }
+  }
 }

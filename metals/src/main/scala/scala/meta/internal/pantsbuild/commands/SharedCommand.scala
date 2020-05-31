@@ -1,32 +1,35 @@
 package scala.meta.internal.pantsbuild.commands
 
-import scala.sys.process._
-import scala.util.Try
+import java.nio.charset.StandardCharsets
+import java.nio.file.Files
+
 import scala.concurrent.ExecutionContext
-import scala.meta.internal.metals.Timer
-import scala.meta.internal.metals.Time
-import scala.meta.internal.metals.MetalsEnrichments._
+import scala.concurrent.Promise
+import scala.sys.process._
 import scala.util.Failure
 import scala.util.Success
-import scala.meta.internal.pantsbuild.Export
+import scala.util.Try
+import scala.util.control.NonFatal
+
+import scala.meta.internal.metals.BuildInfo
+import scala.meta.internal.metals.JdkSources
+import scala.meta.internal.metals.MetalsEnrichments._
+import scala.meta.internal.metals.Time
+import scala.meta.internal.metals.Timer
 import scala.meta.internal.pantsbuild.BloopPants
-import scala.meta.internal.pantsbuild.MessageOnlyException
+import scala.meta.internal.pantsbuild.Export
 import scala.meta.internal.pantsbuild.IntelliJ
-import metaconfig.cli.CliApp
-import metaconfig.internal.Levenshtein
+import scala.meta.internal.pantsbuild.MessageOnlyException
+import scala.meta.internal.pantsbuild.PantsConfiguration
 import scala.meta.internal.pc.LogMessages
+import scala.meta.io.AbsolutePath
+
+import bloop.bloopgun.core.Shell
+import bloop.launcher.LauncherMain
+import metaconfig.cli.CliApp
 import metaconfig.cli.TabCompletionContext
 import metaconfig.cli.TabCompletionItem
-import bloop.launcher.LauncherMain
-import java.nio.charset.StandardCharsets
-import bloop.bloopgun.core.Shell
-import scala.concurrent.Promise
-import scala.meta.internal.metals.BuildInfo
-import java.nio.file.Files
-import scala.meta.io.AbsolutePath
-import scala.meta.internal.pantsbuild.PantsConfiguration
-import scala.meta.internal.metals.JdkSources
-import scala.util.control.NonFatal
+import metaconfig.internal.Levenshtein
 
 object SharedCommand {
   def interpretExport(export: Export): Int = {
@@ -58,7 +61,11 @@ object SharedCommand {
           }
           1
         case Success(exportResult) =>
-          IntelliJ.writeBsp(export.project, export.export.coursierBinary)
+          IntelliJ.writeBsp(
+            export.project,
+            export.export.coursierBinary,
+            exportResult
+          )
           exportResult.foreach { result =>
             val targets =
               LogMessages.pluralName("Pants target", result.exportedTargets)
@@ -74,7 +81,7 @@ object SharedCommand {
           )
           symlinkProjectViewRoots(export.project)
           if (export.export.canBloopExit) {
-            restartBloopIfNewSettings()
+            restartBloopIfNewSettings(AbsolutePath(workspace))
           }
           if (export.open.isEmpty) {
             OpenCommand.onEmpty(export.project, export.app)
@@ -89,9 +96,9 @@ object SharedCommand {
     }
   }
 
-  def restartBloopIfNewSettings(): Unit = {
+  def restartBloopIfNewSettings(workspace: AbsolutePath): Unit = {
     val isUpdatedBloopSettings =
-      BloopGlobalSettings.update(JdkSources.defaultJavaHomePath)
+      BloopGlobalSettings.update(workspace, JdkSources.defaultJavaHomePath)
     if (isUpdatedBloopSettings) {
       restartBloopServer()
     } else {
@@ -178,6 +185,7 @@ object SharedCommand {
   /** Upgrades the Bloop server if it's known to be an old version. */
   private def restartOldBloopServer(): Unit = {
     val isOutdated = Set[String](
+      "1.4.0-RC1-190-ef7d8dba",
       "1.4.0-RC1-167-61fbbe08",
       "1.4.0-RC1-69-693de22a",
       "1.4.0-RC1+33-dfd03f53",

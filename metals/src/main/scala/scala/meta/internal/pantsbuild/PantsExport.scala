@@ -1,8 +1,10 @@
 package scala.meta.internal.pantsbuild
 
-import java.nio.file.Paths
-import scala.collection.mutable
 import java.nio.file.Files
+import java.nio.file.Paths
+
+import scala.collection.mutable
+
 import ujson.Obj
 
 case class PantsExport(
@@ -79,7 +81,14 @@ object PantsExport {
             case None => computeTransitiveDependencies(name)
             case Some(transitiveDepencies) => transitiveDepencies.arr.map(_.str)
           }
-        val libraries = value(PantsKeys.libraries).arr.map(_.str)
+        val compileLibraries = value
+          .getOrElse(PantsKeys.compileLibraries, value(PantsKeys.libraries))
+          .arr
+          .map(_.str)
+        val runtimeLibraries = value
+          .getOrElse(PantsKeys.runtimeLibraries, value(PantsKeys.libraries))
+          .arr
+          .map(_.str)
         val isPantsTargetRoot = value(PantsKeys.isTargetRoot).bool
         val pantsTargetType =
           PantsTargetType(value(PantsKeys.pantsTargetType).str)
@@ -101,7 +110,8 @@ object PantsExport {
           excludes = excludes,
           platform = platform,
           transitiveDependencies = transitiveDependencies,
-          libraries = libraries,
+          compileLibraries = compileLibraries,
+          runtimeLibraries = runtimeLibraries,
           isPantsTargetRoot = isPantsTargetRoot,
           targetType = targetType,
           pantsTargetType = pantsTargetType,

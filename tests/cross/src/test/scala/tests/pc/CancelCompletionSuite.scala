@@ -1,17 +1,19 @@
 package tests.pc
 
 import java.lang
-import scala.meta.internal.jdk.CollectionConverters._
+import java.net.URI
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.CompletionStage
 import java.util.concurrent.atomic.AtomicBoolean
+
+import scala.meta.internal.jdk.CollectionConverters._
 import scala.meta.internal.metals.CompilerOffsetParams
-import scala.meta.pc.CancelToken
-import tests.BaseCompletionSuite
-import scala.meta.internal.pc.InterruptException
-import munit.Location
-import java.net.URI
 import scala.meta.internal.metals.EmptyCancelToken
+import scala.meta.internal.pc.InterruptException
+import scala.meta.pc.CancelToken
+
+import munit.Location
+import tests.BaseCompletionSuite
 
 class CancelCompletionSuite extends BaseCompletionSuite {
 
@@ -88,8 +90,12 @@ class CancelCompletionSuite extends BaseCompletionSuite {
        |assert(assertion: Boolean, message: => Any): Unit
        |""".stripMargin,
     compat = Map(
-      "0." ->
+      "0.23" ->
         """|assert(assertion: => Boolean @InlineParam): Unit
+           |assertFail(message: => Any): Nothing
+           |""".stripMargin,
+      "0.24" ->
+        """|assert(assertion: Boolean @InlineParam): Unit
            |assertFail(message: => Any): Nothing
            |""".stripMargin
     )

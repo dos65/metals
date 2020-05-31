@@ -2,12 +2,13 @@ package scala.meta.internal.builds
 
 import java.nio.file.Files
 import java.util.Properties
-import scala.meta.io.AbsolutePath
+
+import scala.concurrent.ExecutionContext
+
+import scala.meta.internal.io.PathIO
 import scala.meta.internal.metals.MetalsEnrichments._
 import scala.meta.internal.metals.UserConfiguration
-import scala.meta.internal.metals.MetalsServerConfig
-import scala.meta.internal.io.PathIO
-import scala.concurrent.ExecutionContext
+import scala.meta.io.AbsolutePath
 
 /**
  * Detects what build tool is used in this workspace.
@@ -24,8 +25,7 @@ import scala.concurrent.ExecutionContext
 final class BuildTools(
     workspace: AbsolutePath,
     bspGlobalDirectories: List[AbsolutePath],
-    userConfig: () => UserConfiguration,
-    config: MetalsServerConfig
+    userConfig: () => UserConfiguration
 )(implicit ec: ExecutionContext) {
   def isAutoConnectable: Boolean =
     isBloop || isBsp
@@ -64,7 +64,7 @@ final class BuildTools(
 
   def allAvailable: List[BuildTool] = {
     List(
-      SbtBuildTool(version = "", userConfig, config),
+      SbtBuildTool(workspaceVersion = None, userConfig),
       GradleBuildTool(userConfig),
       MavenBuildTool(userConfig),
       MillBuildTool(userConfig),
@@ -83,16 +83,21 @@ final class BuildTools(
     if (isBazel) buf += "Bazel"
     buf.result()
   }
+
   def isEmpty: Boolean = {
     all.isEmpty
   }
-  def loadSupported(): Option[BuildTool] = {
-    if (isSbt) Some(SbtBuildTool(workspace, userConfig, config))
-    else if (isGradle) Some(GradleBuildTool(userConfig))
-    else if (isMaven) Some(MavenBuildTool(userConfig))
-    else if (isMill) Some(MillBuildTool(userConfig))
-    else if (isPants) Some(PantsBuildTool(userConfig))
-    else None
+
+  def loadSupported(): List[BuildTool] = {
+    val buf = List.newBuilder[BuildTool]
+
+    if (isSbt) buf += SbtBuildTool(workspace, userConfig)
+    if (isGradle) buf += GradleBuildTool(userConfig)
+    if (isMaven) buf += MavenBuildTool(userConfig)
+    if (isMill) buf += MillBuildTool(userConfig)
+    if (isPants) buf += PantsBuildTool(userConfig)
+
+    buf.result()
   }
 
   override def toString: String = {
@@ -100,6 +105,7 @@ final class BuildTools(
     if (names.isEmpty) "<no build tool>"
     else names
   }
+
   def isBuildRelated(workspace: AbsolutePath, path: AbsolutePath): Boolean = {
     if (isSbt) SbtBuildTool.isSbtRelatedPath(workspace, path)
     else if (isGradle) GradleBuildTool.isGradleRelatedPath(workspace, path)
@@ -115,7 +121,6 @@ object BuildTools {
     new BuildTools(
       workspace,
       Nil,
-      () => UserConfiguration(),
-      MetalsServerConfig.default
+      () => UserConfiguration()
     )(ExecutionContext.global)
 }

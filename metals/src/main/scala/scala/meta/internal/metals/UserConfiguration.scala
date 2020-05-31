@@ -1,18 +1,21 @@
 package scala.meta.internal.metals
 
+import java.util.Properties
+
+import scala.collection.mutable.ListBuffer
+import scala.util.Failure
+import scala.util.Success
+import scala.util.Try
+
+import scala.meta.RelativePath
+import scala.meta.internal.jdk.CollectionConverters._
+import scala.meta.internal.mtags.Symbol
+import scala.meta.internal.pantsbuild.PantsConfiguration
+import scala.meta.pc.PresentationCompilerConfig
+
 import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import com.google.gson.JsonPrimitive
-import java.util.Properties
-import scala.meta.internal.jdk.CollectionConverters._
-import scala.collection.mutable.ListBuffer
-import scala.meta.RelativePath
-import scala.meta.internal.mtags.Symbol
-import scala.meta.pc.PresentationCompilerConfig
-import scala.util.Try
-import scala.util.Failure
-import scala.util.Success
-import scala.meta.internal.pantsbuild.PantsConfiguration
 
 /**
  * Configuration that the user can override via workspace/didChangeConfiguration.
@@ -33,8 +36,9 @@ case class UserConfiguration(
     bloopSbtAlreadyInstalled: Boolean = false,
     bloopVersion: Option[String] = None,
     pantsTargets: Option[List[String]] = None,
-    superMethodLensesEnabled: Boolean = true,
-    remoteLanguageServer: Option[String] = None
+    superMethodLensesEnabled: Boolean = false,
+    remoteLanguageServer: Option[String] = None,
+    enableStripMarginOnTypeFormatting: Boolean = true
 ) {
 
   def currentBloopVersion: String =
@@ -133,7 +137,7 @@ object UserConfiguration {
     ),
     UserConfigurationOption(
       "super-method-lenses-enabled",
-      "true",
+      "false",
       "false",
       "Should display lenses with links to super methods",
       """|Super method lenses are visible above methods definition that override another methods. Clicking on a lens jumps to super method definition.
@@ -267,9 +271,11 @@ object UserConfiguration {
     val bloopVersion =
       getStringKey("bloop-version")
     val superMethodLensesEnabled =
-      getBooleanKey("super-method-lenses-enabled").getOrElse(true)
+      getBooleanKey("super-method-lenses-enabled").getOrElse(false)
     val remoteLanguageServer =
       getStringKey("remote-language-server")
+    val enableStripMarginOnTypeFormatting =
+      getBooleanKey("enable-strip-margin-on-type-formatting").getOrElse(true)
     if (errors.isEmpty) {
       Right(
         UserConfiguration(
@@ -286,7 +292,8 @@ object UserConfiguration {
           bloopVersion,
           pantsTargets,
           superMethodLensesEnabled,
-          remoteLanguageServer
+          remoteLanguageServer,
+          enableStripMarginOnTypeFormatting
         )
       )
     } else {

@@ -1,11 +1,13 @@
 package scala.meta.internal.pantsbuild.commands
 
-import metaconfig.cli.Command
-import metaconfig.cli.CliApp
-import org.typelevel.paiges.Doc
-import metaconfig.cli.Messages
 import scala.meta.internal.pantsbuild.Export
-import metaconfig.cli.{TabCompletionContext, TabCompletionItem}
+
+import metaconfig.cli.CliApp
+import metaconfig.cli.Command
+import metaconfig.cli.Messages
+import metaconfig.cli.TabCompletionContext
+import metaconfig.cli.TabCompletionItem
+import org.typelevel.paiges.Doc
 
 object RefreshCommand extends Command[RefreshOptions]("refresh") {
   override def description: Doc = Doc.paragraph("Refresh an existing project")
@@ -29,7 +31,13 @@ object RefreshCommand extends Command[RefreshOptions]("refresh") {
         case Some(project) =>
           SharedCommand.interpretExport(
             Export(project, refresh.open, app).copy(
-              export = refresh.export,
+              export = refresh.export.copy(
+                // Preserve --no-sources flag from `fastpass create` command
+                // during `fastpass refresh`.
+                disableSources =
+                  (!project.sources || refresh.export.disableSources) &&
+                    !refresh.export.enableSources
+              ),
               isCache = refresh.update
             )
           )

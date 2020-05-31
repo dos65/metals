@@ -2,14 +2,17 @@ package scala.meta.internal.metals
 
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
-import org.eclipse.lsp4j.ExecuteCommandParams
+
 import scala.collection.mutable.ListBuffer
 import scala.concurrent.ExecutionContext
+
 import scala.meta.internal.metals.Messages.CheckDoctor
 import scala.meta.internal.metals.MetalsEnrichments._
 import scala.meta.internal.metals.ScalaVersions._
-import scala.meta.io.AbsolutePath
 import scala.meta.internal.semver.SemVer
+import scala.meta.io.AbsolutePath
+
+import org.eclipse.lsp4j.ExecuteCommandParams
 
 /**
  * Helps the user figure out what is mis-configured in the build through the "Run doctor" command.
@@ -20,12 +23,10 @@ import scala.meta.internal.semver.SemVer
 final class Doctor(
     workspace: AbsolutePath,
     buildTargets: BuildTargets,
-    config: MetalsServerConfig,
     languageClient: MetalsLanguageClient,
     httpServer: () => Option[MetalsHttpServer],
     tables: Tables,
-    messages: Messages,
-    clientExperimentalCapabilities: ClientExperimentalCapabilities
+    clientConfig: ClientConfiguration
 )(implicit ec: ExecutionContext) {
   private val hasProblems = new AtomicBoolean(false)
   private var bspServerName: Option[String] = None
@@ -71,9 +72,9 @@ final class Doctor(
       clientCommand: Command,
       onServer: MetalsHttpServer => Unit
   ): Unit = {
-    if (config.executeClientCommand.isOn || clientExperimentalCapabilities.executeClientCommandProvider) {
+    if (clientConfig.isExecuteClientCommandProvider) {
       val output =
-        if (config.doctorFormat.isJson || clientExperimentalCapabilities.doctorFormatIsJson)
+        if (clientConfig.doctorFormatIsJson)
           buildTargetsJson()
         else buildTargetsHtml()
       val params = new ExecuteCommandParams(
@@ -129,7 +130,7 @@ final class Doctor(
     def hint() =
       if (isMaven) {
         val website =
-          if (config.doctorFormat.isJson || clientExperimentalCapabilities.doctorFormatIsJson)
+          if (clientConfig.doctorFormatIsJson)
             "Metals Website - https://scalameta.org/metals/docs/build-tools/maven.html"
           else
             "<a href=https://scalameta.org/metals/docs/build-tools/maven.html>Metals website</a>"
@@ -204,11 +205,11 @@ final class Doctor(
 
     message(
       ScalaVersions.isFutureVersion,
-      messages.FutureScalaVersion.message
+      Messages.FutureScalaVersion.message
     ).orElse {
         message(
           ver => !ScalaVersions.isSupportedScalaVersion(ver),
-          messages.UnsupportedScalaVersion.message
+          Messages.UnsupportedScalaVersion.message
         )
       }
       .orElse {
@@ -217,7 +218,7 @@ final class Doctor(
       .orElse {
         message(
           ScalaVersions.isDeprecatedScalaVersion,
-          messages.DeprecatedScalaVersion.message
+          Messages.DeprecatedScalaVersion.message
         )
       }
   }
@@ -250,10 +251,16 @@ final class Doctor(
 
   private def buildTargetsJson(): String = {
     val targets = allTargets()
+    val heading = tables.buildTool.selectedBuildTool() match {
+      case Some(value) =>
+        doctorHeading + s"\n\nYour ${value} build definition has been imported."
+      case None => doctorHeading
+    }
+
     val results = if (targets.isEmpty) {
       DoctorResults(
         doctorTitle,
-        doctorHeading,
+        heading,
         Some(
           List(
             DoctorMessage(
@@ -268,7 +275,7 @@ final class Doctor(
     } else {
       val targetResults =
         targets.sortBy(_.baseDirectory).map(extractTargetInfo)
-      DoctorResults(doctorTitle, doctorHeading, None, Some(targetResults)).toJson
+      DoctorResults(doctorTitle, heading, None, Some(targetResults)).toJson
     }
     ujson.write(results)
   }
@@ -278,6 +285,15 @@ final class Doctor(
       .element("p")(
         _.text(doctorHeading)
       )
+
+    tables.buildTool.selectedBuildTool() match {
+      case Some(value) =>
+        html.element("p")(
+          _.text(s"Your ${value} build definition has been imported.")
+        )
+      case None => ()
+    }
+
     val targets = allTargets()
     if (targets.isEmpty) {
       html

@@ -1,7 +1,9 @@
 package tests
 
 import java.util.Properties
+
 import scala.meta.internal.metals.UserConfiguration
+
 import munit.Location
 
 class UserConfigurationSuite extends BaseSuite {
@@ -211,5 +213,14 @@ class UserConfigurationSuite extends BaseSuite {
     """.stripMargin,
     """Unexpected 'pants-targets' configuration. Expected a string or a list of strings. Obtained: 42"""
   )
+
+  checkOK(
+    "strip-margin false",
+    """
+      |{
+      | "enable-strip-margin-on-type-formatting": false
+      |}
+    """.stripMargin
+  ) { ok => assert(ok.enableStripMarginOnTypeFormatting == false) }
 
 }

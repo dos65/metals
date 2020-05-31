@@ -1,7 +1,5 @@
 package scala.meta.internal.metals
 
-import ch.epfl.scala.{bsp4j => b}
-import io.undertow.server.HttpServerExchange
 import java.net.URI
 import java.nio.charset.StandardCharsets
 import java.nio.file.FileAlreadyExistsException
@@ -9,33 +7,39 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
 import java.nio.file.StandardCopyOption
+import java.nio.file.StandardOpenOption
 import java.util
 import java.util.concurrent.CancellationException
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.CompletionStage
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
-import org.eclipse.lsp4j.TextDocumentIdentifier
-import org.eclipse.{lsp4j => l}
+
+import scala.collection.convert.DecorateAsJava
+import scala.collection.convert.DecorateAsScala
+import scala.collection.mutable
 import scala.compat.java8.FutureConverters
+import scala.concurrent.Await
 import scala.concurrent.ExecutionContext
 import scala.concurrent.Future
-import scala.concurrent.Await
-import scala.concurrent.duration.FiniteDuration
 import scala.concurrent.Promise
+import scala.concurrent.duration.FiniteDuration
+import scala.util.Properties
+import scala.util.Try
+import scala.util.control.NonFatal
+import scala.{meta => m}
+
 import scala.meta.inputs.Input
 import scala.meta.internal.mtags.MtagsEnrichments
 import scala.meta.internal.semanticdb.Scala.Descriptor
 import scala.meta.internal.semanticdb.Scala.Symbols
 import scala.meta.internal.{semanticdb => s}
 import scala.meta.io.AbsolutePath
-import scala.util.Properties
-import scala.{meta => m}
-import java.nio.file.StandardOpenOption
-import scala.util.control.NonFatal
-import scala.util.Try
-import scala.collection.convert.DecorateAsJava
-import scala.collection.convert.DecorateAsScala
+
+import ch.epfl.scala.{bsp4j => b}
+import io.undertow.server.HttpServerExchange
+import org.eclipse.lsp4j.TextDocumentIdentifier
+import org.eclipse.{lsp4j => l}
 
 /**
  * One stop shop for all extension methods that are used in the metals build.
@@ -324,8 +328,20 @@ object MetalsEnrichments
       }
     }
 
-    def createDirectories(): AbsolutePath = {
+    def createDirectories(): AbsolutePath =
       AbsolutePath(Files.createDirectories(path.dealias.toNIO))
+
+    def createAndGetDirectories(): Seq[AbsolutePath] = {
+      def createDirectoriesRec(
+          absolutePath: AbsolutePath,
+          toCreate: Seq[AbsolutePath]
+      ): Seq[AbsolutePath] = {
+        if (absolutePath.exists)
+          toCreate.map(path => AbsolutePath(Files.createDirectory(path.toNIO)))
+        else
+          createDirectoriesRec(absolutePath.parent, absolutePath +: toCreate)
+      }
+      createDirectoriesRec(path, Nil)
     }
 
     def delete(): Unit = {
@@ -399,12 +415,72 @@ object MetalsEnrichments
       if (index < safeLowerBound) -1 else index
     }
 
+    private def indicesOf(str: String): List[Int] = {
+      val b = new mutable.ListBuffer[Int]
+      var idx = 0
+      while (idx < value.length && idx >= 0) {
+        idx = value.indexOf(str, idx)
+        if (idx >= 0) {
+          b += idx
+          idx = idx + 1
+        }
+      }
+      b.result()
+    }
+
+    def onlyIndexOf(str: String): Option[Int] =
+      indicesOf(str) match {
+        case Nil => Some(-1)
+        case List(idx) => Some(idx)
+        case indices => None
+      }
+
     def toAbsolutePathSafe: Option[AbsolutePath] = Try(toAbsolutePath).toOption
 
     def toAbsolutePath: AbsolutePath =
       AbsolutePath(
         Paths.get(URI.create(value.stripPrefix("metals:")))
       ).dealias
+
+    def indexToLspPosition(index: Int): l.Position = {
+      var i = 0
+      var lineCount = 0
+      var lineStartIdx = 0
+      while (i < index && i < value.length) {
+        if (value.charAt(i) == '\n') {
+          lineStartIdx = i + 1
+          lineCount += 1
+        }
+        i += 1
+      }
+      new l.Position(lineCount, index - lineStartIdx)
+    }
+
+    def replaceAllBetween(start: String, end: String)(
+        replacement: String
+    ): String =
+      if (start.isEmpty || end.isEmpty)
+        value
+      else {
+        val startIdx = value.indexOf(start)
+        if (startIdx < 0)
+          value
+        else {
+          val endIdx = value.indexOf(end, startIdx + start.length)
+          if (endIdx < 0)
+            value
+          else {
+            val b = new java.lang.StringBuilder
+            b.append(value, 0, startIdx)
+            b.append(replacement)
+            b.append(value, endIdx + end.length, value.length)
+            b.toString
+          }
+        }
+      }
+
+    def lineAtIndex(index: Int): Int =
+      indexToLspPosition(index).getLine
   }
 
   implicit class XtensionTextDocumentSemanticdb(textDocument: s.TextDocument) {

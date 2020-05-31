@@ -4,35 +4,44 @@ import java.net.InetSocketAddress
 import java.net.ServerSocket
 import java.net.Socket
 import java.net.URI
-import java.{util => ju}
-import java.util.concurrent.TimeUnit
 import java.util.Collections.singletonList
+import java.util.concurrent.TimeUnit
+import java.{util => ju}
+
+import scala.concurrent.ExecutionContext
+import scala.concurrent.Future
+import scala.concurrent.Promise
+import scala.util.Failure
+import scala.util.Try
+
+import scala.meta.internal.metals.BuildServerConnection
+import scala.meta.internal.metals.BuildTargetClasses
+import scala.meta.internal.metals.BuildTargetClassesFinder
+import scala.meta.internal.metals.BuildTargetNotFoundException
+import scala.meta.internal.metals.BuildTargets
+import scala.meta.internal.metals.ClassNotFoundInBuildTargetException
+import scala.meta.internal.metals.ClientCommands
+import scala.meta.internal.metals.Compilations
+import scala.meta.internal.metals.DebugUnresolvedMainClassParams
+import scala.meta.internal.metals.DebugUnresolvedTestClassParams
+import scala.meta.internal.metals.DefinitionProvider
+import scala.meta.internal.metals.JsonParser
+import scala.meta.internal.metals.JsonParser._
+import scala.meta.internal.metals.Messages
+import scala.meta.internal.metals.Messages.UnresolvedDebugSessionParams
+import scala.meta.internal.metals.MetalsBuildClient
+import scala.meta.internal.metals.MetalsEnrichments._
+import scala.meta.internal.metals.MetalsLanguageClient
+import scala.meta.internal.metals.StatusBar
+
 import ch.epfl.scala.bsp4j.BuildTargetIdentifier
+import ch.epfl.scala.{bsp4j => b}
 import ch.epfl.scala.{bsp4j => b}
 import com.google.common.net.InetAddresses
 import com.google.gson.JsonElement
-import scala.meta.internal.metals.DefinitionProvider
-import scala.meta.internal.metals.BuildTargets
-import scala.meta.internal.metals.BuildTargetClasses
-import scala.meta.internal.metals.MetalsLanguageClient
-import ch.epfl.scala.{bsp4j => b}
-import scala.concurrent.Future
-import scala.concurrent.Promise
-import scala.concurrent.ExecutionContext
-import scala.meta.internal.metals.BuildServerConnection
-import scala.meta.internal.metals.MetalsEnrichments._
-import scala.meta.internal.metals.DebugUnresolvedMainClassParams
-import scala.meta.internal.metals.DebugUnresolvedTestClassParams
-import scala.meta.internal.metals.BuildTargetClassesFinder
-import scala.meta.internal.metals.Compilations
-import scala.util.Try
-import scala.util.Failure
+import org.eclipse.lsp4j.ExecuteCommandParams
 import org.eclipse.lsp4j.MessageParams
 import org.eclipse.lsp4j.MessageType
-import scala.meta.internal.metals.JsonParser
-import scala.meta.internal.metals.JsonParser._
-import scala.meta.internal.metals.ClassNotFoundInBuildTargetException
-import scala.meta.internal.metals.Messages.UnresolvedDebugSessionParams
 
 class DebugProvider(
     definitionProvider: DefinitionProvider,
@@ -40,7 +49,9 @@ class DebugProvider(
     buildTargets: BuildTargets,
     buildTargetClasses: BuildTargetClasses,
     compilations: Compilations,
-    languageClient: MetalsLanguageClient
+    languageClient: MetalsLanguageClient,
+    buildClient: MetalsBuildClient,
+    statusBar: StatusBar
 ) {
 
   lazy val buildTargetClassesFinder = new BuildTargetClassesFinder(
@@ -61,10 +72,11 @@ class DebugProvider(
       val awaitClient =
         () => Future(proxyServer.accept()).withTimeout(10, TimeUnit.SECONDS)
 
+      val jvmOptionsTranslatedParams = translateJvmParams(parameters)
       // long timeout, since server might take a while to compile the project
       val connectToServer = () => {
         buildServer
-          .map(_.startDebugSession(parameters))
+          .map(_.startDebugSession(jvmOptionsTranslatedParams))
           .getOrElse(BuildServerUnavailableError)
           .withTimeout(60, TimeUnit.SECONDS)
           .map { uri =>
@@ -97,13 +109,16 @@ class DebugProvider(
   def resolveMainClassParams(
       params: DebugUnresolvedMainClassParams
   )(implicit ec: ExecutionContext): Future[b.DebugSessionParams] = {
-    withRebuildRetry(() =>
+    val result = withRebuildRetry(() =>
       buildTargetClassesFinder
         .findMainClassAndItsBuildTarget(
           params.mainClass,
           Option(params.buildTarget)
         )
-    ).map {
+    ).flatMap {
+      case (clazz, target) :: others
+          if buildClient.buildHasErrors(target.getId()) =>
+        Future.failed(WorkspaceErrorsException)
       case (clazz, target) :: others =>
         if (others.nonEmpty) {
           reportOtherBuildTargets(
@@ -117,27 +132,34 @@ class DebugProvider(
         clazz.setJvmOptions(
           Option(params.jvmOptions).getOrElse(List().asJava)
         )
-        new b.DebugSessionParams(
-          singletonList(target.getId()),
-          b.DebugSessionParamsDataKind.SCALA_MAIN_CLASS,
-          clazz.toJson
+        Future.successful(
+          new b.DebugSessionParams(
+            singletonList(target.getId()),
+            b.DebugSessionParamsDataKind.SCALA_MAIN_CLASS,
+            clazz.toJson
+          )
         )
       //should not really happen due to
       //`findMainClassAndItsBuildTarget` succeeding with non-empty list
-      case Nil => throw new ju.NoSuchElementException(params.mainClass)
+      case Nil => Future.failed(new ju.NoSuchElementException(params.mainClass))
     }
+    result.failed.foreach(reportErrors)
+    result
   }
 
   def resolveTestClassParams(
       params: DebugUnresolvedTestClassParams
   )(implicit ec: ExecutionContext): Future[b.DebugSessionParams] = {
-    withRebuildRetry(() => {
+    val result = withRebuildRetry(() => {
       buildTargetClassesFinder
         .findTestClassAndItsBuildTarget(
           params.testClass,
           Option(params.buildTarget)
         )
-    }).map {
+    }).flatMap {
+      case (clazz, target) :: others
+          if buildClient.buildHasErrors(target.getId()) =>
+        Future.failed(WorkspaceErrorsException)
       case (clazz, target) :: others =>
         if (others.nonEmpty) {
           reportOtherBuildTargets(
@@ -147,15 +169,45 @@ class DebugProvider(
             "test"
           )
         }
-        new b.DebugSessionParams(
-          singletonList(target.getId()),
-          b.DebugSessionParamsDataKind.SCALA_TEST_SUITES,
-          singletonList(clazz).toJson
+        Future.successful(
+          new b.DebugSessionParams(
+            singletonList(target.getId()),
+            b.DebugSessionParamsDataKind.SCALA_TEST_SUITES,
+            singletonList(clazz).toJson
+          )
         )
       //should not really happen due to
       //`findMainClassAndItsBuildTarget` succeeding with non-empty list
-      case Nil => throw new ju.NoSuchElementException(params.testClass)
+      case Nil => Future.failed(new ju.NoSuchElementException(params.testClass))
     }
+    result.failed.foreach(reportErrors)
+    result
+  }
+
+  private val reportErrors: PartialFunction[Throwable, Unit] = {
+    case t if buildClient.buildHasErrors =>
+      statusBar.addMessage(Messages.DebugErrorsPresent)
+      languageClient.metalsExecuteClientCommand(
+        new ExecuteCommandParams(
+          ClientCommands.FocusDiagnostics.id,
+          Nil.asJava
+        )
+      )
+    case t: ClassNotFoundException =>
+      languageClient.showMessage(
+        Messages.DebugClassNotFound.invalidClass(t.getMessage())
+      )
+    case t @ ClassNotFoundInBuildTargetException(cls, buildTarget) =>
+      languageClient.showMessage(
+        Messages.DebugClassNotFound
+          .invalidTargetClass(cls, buildTarget.getDisplayName())
+      )
+    case t @ BuildTargetNotFoundException(target) =>
+      languageClient.showMessage(
+        Messages.DebugClassNotFound
+          .invalidTarget(target)
+      )
+
   }
 
   private def parseSessionName(
@@ -175,6 +227,26 @@ class DebugProvider(
     }
   }
 
+  private def translateJvmParams(
+      parameters: b.DebugSessionParams
+  ): b.DebugSessionParams = {
+    parameters.getData match {
+      case json: JsonElement if parameters.getDataKind == "scala-main-class" =>
+        json.as[b.ScalaMainClass].foreach { main =>
+          val translated = main.getJvmOptions().asScala.map { param =>
+            if (!param.startsWith("-J"))
+              s"-J$param"
+            else
+              param
+          }
+          main.setJvmOptions(translated.asJava)
+          parameters.setData(main.toJsonObject)
+        }
+        parameters
+      case data =>
+        parameters
+    }
+  }
   private def connect(uri: URI): Socket = {
     val socket = new Socket()
 
@@ -197,7 +269,7 @@ class DebugProvider(
           result <- Future.fromTry(f())
         } yield result
       case _: ClassNotFoundException =>
-        val allTargets = buildTargets.all.toSeq.map(_.info.getId())
+        val allTargets = buildTargets.allBuildTargetIds
         for {
           _ <- compilations.compileTargets(allTargets)
           _ <- buildTargetClasses.rebuildIndex(allTargets)
@@ -239,3 +311,8 @@ object DebugParametersJsonParsers {
   lazy val testClassParamsParser =
     new JsonParser.Of[DebugUnresolvedTestClassParams]
 }
+
+case object WorkspaceErrorsException
+    extends Exception(
+      s"Cannot run class, since the workspace has errors."
+    )

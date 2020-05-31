@@ -1,19 +1,22 @@
 package scala.meta.internal.metals
 
-import ch.epfl.scala.{bsp4j => b}
 import scala.collection.concurrent.TrieMap
 import scala.concurrent.ExecutionContext
 import scala.concurrent.Future
+
 import scala.meta.internal.metals.BuildTargetClasses.Classes
 import scala.meta.internal.metals.MetalsEnrichments._
 import scala.meta.internal.semanticdb.Scala.Descriptor
 import scala.meta.internal.semanticdb.Scala.Symbols
 
+import ch.epfl.scala.{bsp4j => b}
+
 /**
  * In-memory index of main class symbols grouped by their enclosing build target
  */
 final class BuildTargetClasses(
-    buildServer: () => Option[BuildServerConnection]
+    buildServer: b.BuildTargetIdentifier => Option[BuildServerConnection],
+    buildTargets: BuildTargets
 )(implicit val ec: ExecutionContext) {
   private val index = TrieMap.empty[b.BuildTargetIdentifier, Classes]
 
@@ -52,32 +55,33 @@ final class BuildTargetClasses(
   private def fetchClasses(
       targets: Seq[b.BuildTargetIdentifier]
   ): Future[Unit] = {
-    buildServer() match {
-      case Some(connection) =>
-        val targetsList = targets.asJava
-        targetsList.forEach(invalidate)
-        val classes = targets.map(t => (t, new Classes)).toMap
+    Future
+      .traverse(targets.groupBy(buildServer)) {
+        case (None, _) =>
+          Future.successful(())
+        case (Some(connection), targets0) =>
+          val targetsList = targets0.asJava
+          targetsList.forEach(invalidate)
+          val classes = targets0.map(t => (t, new Classes)).toMap
 
-        val updateMainClasses = connection
-          .mainClasses(new b.ScalaMainClassesParams(targetsList))
-          .map(cacheMainClasses(classes, _))
+          val updateMainClasses = connection
+            .mainClasses(new b.ScalaMainClassesParams(targetsList))
+            .map(cacheMainClasses(classes, _))
 
-        val updateTestClasses = connection
-          .testClasses(new b.ScalaTestClassesParams(targetsList))
-          .map(cacheTestClasses(classes, _))
+          val updateTestClasses = connection
+            .testClasses(new b.ScalaTestClassesParams(targetsList))
+            .map(cacheTestClasses(classes, _))
 
-        for {
-          _ <- updateMainClasses
-          _ <- updateTestClasses
-        } yield {
-          classes.foreach {
-            case (id, classes) => index.put(id, classes)
+          for {
+            _ <- updateMainClasses
+            _ <- updateTestClasses
+          } yield {
+            classes.foreach {
+              case (id, classes) => index.put(id, classes)
+            }
           }
-        }
-
-      case None =>
-        Future.successful(())
-    }
+      }
+      .ignoreValue
   }
 
   private def cacheMainClasses(
@@ -87,8 +91,17 @@ final class BuildTargetClasses(
     for {
       item <- result.getItems.asScala
       target = item.getTarget
+      buildTarget <- buildTargets.scalaTarget(target)
       aClass <- item.getClasses.asScala
-      symbol <- createSymbols(aClass.getClassName, List(Descriptor.Term))
+      descriptors = {
+        if (ScalaVersions.isScala3Version(buildTarget.scalaVersion))
+          List(Descriptor.Term, Descriptor.Type)
+        else List(Descriptor.Term)
+      }
+      symbol <- createSymbols(
+        aClass.getClassName,
+        descriptors
+      )
     } {
       classes(target).mainClasses.put(symbol, aClass)
     }

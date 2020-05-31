@@ -1,12 +1,14 @@
 package scala.meta.metals
 
-import scala.meta.internal.metals.Embedded
-import scala.meta.internal.metals.BuildInfo
-import scala.meta.internal.metals.ScalaVersions
-import scala.meta.internal.metals.FormattingProvider
 import java.nio.file.Files
-import bloop.launcher.Launcher
+
+import scala.meta.internal.metals.BuildInfo
+import scala.meta.internal.metals.Embedded
+import scala.meta.internal.metals.FormattingProvider
 import scala.meta.internal.metals.MetalsLogger
+import scala.meta.internal.metals.ScalaVersions
+
+import bloop.launcher.Launcher
 
 object DownloadDependencies {
 
@@ -34,14 +36,18 @@ object DownloadDependencies {
 
   def downloadScala(): Unit = {
     scribe.info("Downloading scala library and sources")
-    BuildInfo.supportedScalaVersions.foreach { scalaVersion =>
+    BuildInfo.supportedScala2Versions.foreach { scalaVersion =>
       Embedded.downloadScalaSources(scalaVersion)
+    }
+
+    BuildInfo.supportedScala3Versions.foreach { scalaVersion =>
+      Embedded.downloadDottySources(scalaVersion)
     }
   }
 
   def downloadMdoc(): Unit = {
     scribe.info("Downloading mdoc")
-    BuildInfo.supportedScalaVersions.foreach { scalaVersion =>
+    BuildInfo.supportedScala2Versions.foreach { scalaVersion =>
       Embedded.downloadMdoc(
         scalaVersion,
         ScalaVersions.scalaBinaryVersionFromFullVersion(scalaVersion)
@@ -68,7 +74,7 @@ object DownloadDependencies {
 
   def downloadSemanticDB(): Unit = {
     scribe.info("Downloading semanticdb-scalac")
-    BuildInfo.supportedScalaVersions.foreach { scalaVersion =>
+    BuildInfo.supportedScala2Versions.foreach { scalaVersion =>
       Embedded.downloadSemanticdbScalac(scalaVersion)
     }
   }

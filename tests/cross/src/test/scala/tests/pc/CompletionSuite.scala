@@ -8,7 +8,7 @@ class CompletionSuite extends BaseCompletionSuite {
   override def requiresJdkSources: Boolean = true
 
   check(
-    "scope".tag(IgnoreScalaVersion(BuildInfoVersions.scala3)),
+    "scope".tag(IgnoreScalaVersion(BuildInfoVersions.scala3Versions)),
     """
       |object A {
       |  Lis@@
@@ -103,7 +103,7 @@ class CompletionSuite extends BaseCompletionSuite {
   )
 
   check(
-    "cursor".tag(IgnoreScalaVersion(BuildInfoVersions.scala3)),
+    "cursor".tag(IgnoreScalaVersion(BuildInfoVersions.scala3Versions)),
     """
       |object A {
       |  val default = 1
@@ -121,7 +121,7 @@ class CompletionSuite extends BaseCompletionSuite {
 
   check(
     // @tgodzik different results might be returned on each run for Scala 3
-    "dot".tag(IgnoreScalaVersion(BuildInfoVersions.scala3)),
+    "dot".tag(IgnoreScalaVersion(BuildInfoVersions.scala3Versions)),
     """
       |object A {
       |  List.@@
@@ -248,7 +248,7 @@ class CompletionSuite extends BaseCompletionSuite {
   )
 
   check(
-    "fuzzy".tag(IgnoreScalaVersion(BuildInfoVersions.scala3)),
+    "fuzzy".tag(IgnoreScalaVersion(BuildInfoVersions.scala3Versions)),
     """
       |object A {
       |  def userService = 1
@@ -259,7 +259,7 @@ class CompletionSuite extends BaseCompletionSuite {
   )
 
   check(
-    "fuzzy1".tag(IgnoreScalaVersion(BuildInfoVersions.scala3)),
+    "fuzzy1".tag(IgnoreScalaVersion(BuildInfoVersions.scala3Versions)),
     """
       |object A {
       |  new PBuil@@
@@ -312,7 +312,7 @@ class CompletionSuite extends BaseCompletionSuite {
   )
 
   check(
-    "import".tag(IgnoreScalaVersion(BuildInfoVersions.scala3)),
+    "import".tag(IgnoreScalaVersion(BuildInfoVersions.scala3Versions)),
     """
       |import JavaCon@@
       |""".stripMargin,
@@ -341,7 +341,7 @@ class CompletionSuite extends BaseCompletionSuite {
   )
 
   check(
-    "import1".tag(IgnoreScalaVersion(BuildInfoVersions.scala3)),
+    "import1".tag(IgnoreScalaVersion(BuildInfoVersions.scala3Versions)),
     """
       |import Paths@@
       |""".stripMargin,
@@ -350,7 +350,7 @@ class CompletionSuite extends BaseCompletionSuite {
   )
 
   check(
-    "import2".tag(IgnoreScalaVersion(BuildInfoVersions.scala3)),
+    "import2".tag(IgnoreScalaVersion(BuildInfoVersions.scala3Versions)),
     """
       |import Catch@@
       |""".stripMargin,
@@ -359,7 +359,7 @@ class CompletionSuite extends BaseCompletionSuite {
   )
 
   check(
-    "import3".tag(IgnoreScalaVersion(BuildInfoVersions.scala3)),
+    "import3".tag(IgnoreScalaVersion(BuildInfoVersions.scala3Versions)),
     """
       |import Path@@
       |""".stripMargin,
@@ -378,7 +378,7 @@ class CompletionSuite extends BaseCompletionSuite {
   )
 
   check(
-    "accessible".tag(IgnoreScalaVersion(BuildInfoVersions.scala3)),
+    "accessible".tag(IgnoreScalaVersion(BuildInfoVersions.scala3Versions)),
     """
       |package a
       |import MetaData@@
@@ -390,7 +390,7 @@ class CompletionSuite extends BaseCompletionSuite {
   )
 
   check(
-    "source".tag(IgnoreScalaVersion(BuildInfoVersions.scala3)),
+    "source".tag(IgnoreScalaVersion(BuildInfoVersions.scala3Versions)),
     """
       |package a
       |object Main {
@@ -474,7 +474,7 @@ class CompletionSuite extends BaseCompletionSuite {
   )
 
   check(
-    "numeric-sort".tag(IgnoreScalaVersion(BuildInfoVersions.scala3)),
+    "numeric-sort".tag(IgnoreScalaVersion(BuildInfoVersions.scala3Versions)),
     """
       |package a
       |
@@ -570,7 +570,7 @@ class CompletionSuite extends BaseCompletionSuite {
        |""".stripMargin
   )
   check(
-    "local1".tag(IgnoreScalaVersion(BuildInfoVersions.scala3)),
+    "local1".tag(IgnoreScalaVersion(BuildInfoVersions.scala3Versions)),
     """
       |import scala.concurrent.DelayedLazyVal
       |
@@ -647,7 +647,7 @@ class CompletionSuite extends BaseCompletionSuite {
     // NOTE(olafur) The compiler produces non-deterministic results for this
     // test case, sometime it uses Double and sometimes it uses Float depending
     // other whether its a clean compiler or reused one.
-    postProcessObtained = _.replaceAllLiterally("Float", "Double"),
+    postProcessObtained = _.replace("Float", "Double"),
     stableOrder = false,
     compat = Map(
       "2.13" ->
@@ -656,12 +656,6 @@ class CompletionSuite extends BaseCompletionSuite {
            |until(end: Long): NumericRange.Exclusive[Long]
            |until(end: Long, step: Long): NumericRange.Exclusive[Long]
            |""".stripMargin,
-      "2.12.4" ->
-        """|until(end: Double): Range.Partial[Double,NumericRange[Double]]
-           |until(end: Double, step: Double): NumericRange.Exclusive[Double]
-           |until(end: Long): NumericRange.Exclusive[Long]
-           |until(end: Long, step: Long): NumericRange.Exclusive[Long]
-        """.stripMargin,
       "2.11" ->
         """|until(end: Double): Range.Partial[Double,NumericRange[Double]]
            |until(end: Double, step: Double): NumericRange.Exclusive[Double]
@@ -756,7 +750,7 @@ class CompletionSuite extends BaseCompletionSuite {
   )
 
   check(
-    "type".tag(IgnoreScalaVersion(BuildInfoVersions.scala3)),
+    "type".tag(IgnoreScalaVersion(BuildInfoVersions.scala3Versions)),
     s"""|object Main {
         |  val foo: ListBuffe@@
         |}
@@ -766,7 +760,7 @@ class CompletionSuite extends BaseCompletionSuite {
   )
 
   check(
-    "type1".tag(IgnoreScalaVersion(BuildInfoVersions.scala3)),
+    "type1".tag(IgnoreScalaVersion(BuildInfoVersions.scala3Versions)),
     s"""|object Main {
         |  val foo: Map[Int, ListBuffe@@]
         |}
@@ -776,7 +770,7 @@ class CompletionSuite extends BaseCompletionSuite {
   )
 
   check(
-    "type2".tag(IgnoreScalaVersion(BuildInfoVersions.scala3)),
+    "type2".tag(IgnoreScalaVersion(BuildInfoVersions.scala3Versions)),
     s"""|object Main {
         |  new scala.Iterable@@
         |}
@@ -1029,7 +1023,7 @@ class CompletionSuite extends BaseCompletionSuite {
   )
 
   check(
-    "fuzzy-member".tag(IgnoreScalaVersion(BuildInfoVersions.scala3)),
+    "fuzzy-member".tag(IgnoreScalaVersion(BuildInfoVersions.scala3Versions)),
     s"""|class Foo {
         |  def getTimeStamp: Int = 0
         |}

@@ -3,13 +3,14 @@ package tests.pc
 import scala.meta.internal.pc.PresentationCompilerConfigImpl
 import scala.meta.pc.PresentationCompilerConfig
 import scala.meta.pc.PresentationCompilerConfig.OverrideDefFormat
+
 import tests.BaseCompletionSuite
 import tests.BuildInfoVersions
 
 class CompletionOverrideConfigSuite extends BaseCompletionSuite {
 
   override def excludedScalaVersions: Set[String] =
-    Set(BuildInfoVersions.scala3)
+    BuildInfoVersions.scala3Versions.toSet
 
   override def config: PresentationCompilerConfig =
     PresentationCompilerConfigImpl().copy(

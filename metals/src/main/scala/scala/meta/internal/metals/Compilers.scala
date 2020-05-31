@@ -2,39 +2,47 @@ package scala.meta.internal.metals
 
 import ch.epfl.scala.bsp4j.BuildTargetIdentifier
 import ch.epfl.scala.bsp4j.CompileReport
+import java.nio.file.Paths
 import java.util.Collections
 import java.util.concurrent.ScheduledExecutorService
-import org.eclipse.lsp4j.InitializeParams
-import org.eclipse.lsp4j.CompletionItem
-import org.eclipse.lsp4j.CompletionList
-import org.eclipse.lsp4j.CompletionParams
-import org.eclipse.lsp4j.Hover
-import org.eclipse.lsp4j.SignatureHelp
-import org.eclipse.lsp4j.TextDocumentPositionParams
+import java.{util => ju}
+
 import scala.concurrent.ExecutionContextExecutorService
+import scala.concurrent.Future
+import scala.util.Try
+
+import scala.meta.inputs.Input
 import scala.meta.inputs.Position
 import scala.meta.internal.metals.MetalsEnrichments._
+import scala.meta.internal.metals.ammonite.Ammonite
 import scala.meta.internal.mtags
+import scala.meta.internal.pc.EmptySymbolSearch
 import scala.meta.internal.pc.LogMessages
 import scala.meta.internal.pc.ScalaPresentationCompiler
 import scala.meta.io.AbsolutePath
+import scala.meta.pc.AutoImportsResult
 import scala.meta.pc.CancelToken
 import scala.meta.pc.PresentationCompiler
 import scala.meta.pc.SymbolSearch
-import scala.concurrent.Future
-import scala.meta.pc.AutoImportsResult
-import org.eclipse.lsp4j.TextEdit
-import scala.util.Try
-import org.eclipse.lsp4j.FoldingRange
-import java.{util => ju}
+
+import ch.epfl.scala.bsp4j.BuildTargetIdentifier
+import ch.epfl.scala.bsp4j.CompileReport
+import org.eclipse.lsp4j.CompletionItem
+import org.eclipse.lsp4j.CompletionList
+import org.eclipse.lsp4j.CompletionParams
 import org.eclipse.lsp4j.DocumentOnTypeFormattingParams
-import org.eclipse.lsp4j.TextEdit
 import org.eclipse.lsp4j.DocumentRangeFormattingParams
-import org.eclipse.lsp4j.FoldingRangeRequestParams
-import org.eclipse.lsp4j.DocumentSymbolParams
 import org.eclipse.lsp4j.DocumentSymbol
-import java.nio.file.Paths
-import scala.meta.internal.pc.EmptySymbolSearch
+import org.eclipse.lsp4j.DocumentSymbolParams
+import org.eclipse.lsp4j.FoldingRange
+import org.eclipse.lsp4j.FoldingRangeRequestParams
+import org.eclipse.lsp4j.Hover
+import org.eclipse.lsp4j.InitializeParams
+import org.eclipse.lsp4j.SignatureHelp
+import org.eclipse.lsp4j.TextDocumentPositionParams
+import org.eclipse.lsp4j.TextEdit
+import org.eclipse.lsp4j.TextEdit
+import org.eclipse.lsp4j.{Position => LspPosition}
 
 /**
  * Manages lifecycle for presentation compilers in all build targets.
@@ -46,6 +54,7 @@ class Compilers(
     workspace: AbsolutePath,
     config: MetalsServerConfig,
     userConfig: () => UserConfiguration,
+    ammonite: () => Ammonite,
     buildTargets: BuildTargets,
     buffers: Buffers,
     search: SymbolSearch,
@@ -226,7 +235,13 @@ class Compilers(
       token: CancelToken
   ): Future[CompletionList] =
     withPC(params, None) { (pc, pos) =>
-      pc.complete(CompilerOffsetParams.fromPos(pos, token)).asScala
+      pc.complete(CompilerOffsetParams.fromPos(pos, token))
+        .asScala
+        .map { list =>
+          if (params.getTextDocument.getUri.isAmmoniteScript)
+            Ammonite.adjustCompletionListInPlace(list, pos.input.text)
+          list
+        }
     }.getOrElse(Future.successful(new CompletionList()))
 
   def autoImports(
@@ -257,7 +272,12 @@ class Compilers(
     withPC(params, Some(interactiveSemanticdbs)) { (pc, pos) =>
       pc.hover(CompilerOffsetParams.fromPos(pos, token))
         .asScala
-        .map(_.asScala)
+        .map(_.asScala.map { hover =>
+          if (params.getTextDocument.getUri.isAmmoniteScript)
+            Ammonite.adjustHoverResp(hover, pos.input.text)
+          else
+            hover
+        })
     }.getOrElse {
       Future.successful(Option.empty)
     }
@@ -310,7 +330,7 @@ class Compilers(
       jcache.computeIfAbsent(
         target, { _ =>
           statusBar.trackBlockingTask(
-            s"${statusBar.icons.sync}Loading presentation compiler"
+            s"${config.icons.sync}Loading presentation compiler"
           ) {
             newCompiler(info)
           }
@@ -323,12 +343,31 @@ class Compilers(
     jcache.computeIfAbsent(
       st.info.getId, { _ =>
         statusBar.trackBlockingTask(
-          s"${statusBar.icons.sync}Loading presentation compiler"
+          s"${config.icons.sync}Loading presentation compiler"
         ) {
           newCompiler(st)
         }
       }
     )
+
+  private def ammoniteInputPosOpt(
+      path: AbsolutePath,
+      position: LspPosition,
+      interactiveSemanticdbs: Option[InteractiveSemanticdbs]
+  ): Option[(Input.VirtualFile, LspPosition)] =
+    if (path.isAmmoniteScript)
+      for {
+        target <- buildTargets
+          .inverseSources(path)
+          .orElse(interactiveSemanticdbs.flatMap(_.getBuildTarget(path)))
+        res <- ammonite().generatedScalaInputForPc(
+          target,
+          path,
+          position
+        )
+      } yield res
+    else
+      None
 
   private def withPC[T](
       params: TextDocumentPositionParams,
@@ -340,30 +379,42 @@ class Compilers(
 
     val path = params.getTextDocument.getUri.toAbsolutePath
 
-    findTarget(path, interactiveSemanticdbs) match {
-      case None if path.isScalaFilename =>
-        val out = fn(ramboCompiler, metaPosition(params, path))
-        Some(out)
+    val maybeCompiler = findTarget(path, interactiveSemanticdbs) match {
+      case None if path.isScalaFilename => Some(ramboCompiler)
       case Some(scalaTarget) if isSupported(scalaTarget) =>
-        val compiler = loadCompiler(scalaTarget)
-        val pos = metaPosition(params, path)
-        val out = fn(compiler, pos)
-        Some(out)
+        Some(loadCompiler(scalaTarget))
       case Some(v) =>
         scribe.warn(s"unsupported Scala ${v.scalaVersion}")
         None
       case None => None
     }
+
+    maybeCompiler.map(compiler => {
+      def defaultInputPos = {
+        val input = path
+          .toInputFromBuffers(buffers)
+          .copy(path = params.getTextDocument.getUri())
+        val pos = params.getPosition
+        (input, pos)
+      }
+
+      val (input, paramsPos) =
+        ammoniteInputPosOpt(path, params.getPosition, interactiveSemanticdbs)
+          .getOrElse(defaultInputPos)
+      val pos = paramsPos.toMeta(input)
+      fn(compiler, pos)
+    })
   }
 
-  private def metaPosition(
+  private def defaultInputPos(
       params: TextDocumentPositionParams,
       path: AbsolutePath
-  ): meta.Position = {
+  ): (Input.VirtualFile, meta.Position) = {
     val input = path
       .toInputFromBuffers(buffers)
       .copy(path = params.getTextDocument.getUri())
-    params.getPosition.toMeta(input)
+    val pos = params.getPosition.toMeta(input)
+    (input, pos)
   }
 
   private def findTarget(
@@ -389,13 +440,21 @@ class Compilers(
       .withExecutorService(ec)
       .withScheduledExecutorService(sh)
       .withConfiguration(
-        config.compilers.copy(
-          _symbolPrefixes = userConfig().symbolPrefixes,
-          isCompletionSnippetsEnabled =
-            initializeParams.supportsCompletionSnippets,
-          isFoldOnlyLines = initializeParams.foldOnlyLines,
-          _autoImports = autoImports
-        )
+        initializeParams
+          .map(params => {
+            val options = InitializationOptions.from(params).compilerOptions
+            config.compilers.update(options)
+          })
+          .getOrElse(config.compilers)
+          .copy(
+            _symbolPrefixes = userConfig().symbolPrefixes,
+            isCompletionSnippetsEnabled =
+              initializeParams.supportsCompletionSnippets,
+            isFoldOnlyLines = initializeParams.foldOnlyLines,
+            isStripMarginOnTypeFormattingEnabled =
+              userConfig().enableStripMarginOnTypeFormatting,
+            _autoImports = autoImports
+          )
       )
 
   def newCompiler(scalaTarget: ScalaTarget): PresentationCompiler = {

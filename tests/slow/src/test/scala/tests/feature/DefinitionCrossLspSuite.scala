@@ -1,8 +1,10 @@
 package tests.feature
 
-import tests.BaseCompletionLspSuite
-import scala.meta.internal.metals.BuildInfo
 import scala.concurrent.Future
+
+import scala.meta.internal.metals.BuildInfo
+
+import tests.BaseCompletionLspSuite
 
 class DefinitionCrossLspSuite
     extends BaseCompletionLspSuite("definition-cross") {
@@ -17,6 +19,39 @@ class DefinitionCrossLspSuite
     test("2.13") {
       basicDefinitionTest(BuildInfo.scala213)
     }
+  }
+
+  test("underscore") {
+    cleanDatabase()
+    for {
+      _ <- server.initialize(
+        s"""
+           |/metals.json
+           |{
+           |  "a": {
+           |    "scalaVersion": "${BuildInfo.scala213}"
+           |  }
+           |}
+           |/a/src/main/scala/a/Main.scala
+           |package a
+           |
+           |class Main {
+           |  val tests = new Test
+           |  tests.dummy()
+           |}
+           |/a/src/main/scala/a/Test.scala
+           |package a
+           |
+           |class Test{
+           |  val x = 100_000
+           |  def dummy() = x
+           |}
+           |""".stripMargin
+      )
+      _ = server.didOpen("a/src/main/scala/a/Main.scala")
+      _ = server.didOpen("a/src/main/scala/a/Test.scala")
+      _ = server.assertReferenceDefinitionBijection()
+    } yield ()
   }
 
   def basicDefinitionTest(scalaVersion: String): Future[Unit] = {

@@ -1,16 +1,20 @@
 package scala.meta.internal.metals
 
-import scala.meta.io.AbsolutePath
 import java.net.URI
-import scala.concurrent.Future
-import MetalsEnrichments._
+import java.nio.file.FileAlreadyExistsException
+
 import scala.concurrent.ExecutionContext
+import scala.concurrent.Future
 import scala.util.control.NonFatal
-import org.eclipse.lsp4j.MessageType
+
+import scala.meta.internal.metals.Messages.NewScalaFile
+import scala.meta.internal.metals.MetalsEnrichments._
+import scala.meta.io.AbsolutePath
+
 import org.eclipse.lsp4j.ExecuteCommandParams
 import org.eclipse.lsp4j.Location
+import org.eclipse.lsp4j.MessageType
 import org.eclipse.lsp4j.Range
-import scala.meta.internal.metals.Messages.NewScalaFile
 
 class NewFilesProvider(
     workspace: AbsolutePath,
@@ -164,15 +168,22 @@ class NewFilesProvider(
       name: String
   ): Future[(AbsolutePath, Range)] = {
     val path = directory.getOrElse(workspace).resolve(name + ".worksheet.sc")
-    createFile(path).map((_, new Range))
+    createFileAndWriteText(path, NewFileTemplate.empty)
   }
 
-  private def createFile(
-      path: AbsolutePath
-  ): Future[AbsolutePath] = {
-    val result = Future {
-      path.touch()
-      path
+  private def createFileAndWriteText(
+      path: AbsolutePath,
+      template: NewFileTemplate
+  ): Future[(AbsolutePath, Range)] = {
+    val result = if (path.exists) {
+      Future.failed(
+        new FileAlreadyExistsException(s"The file $path already exists.")
+      )
+    } else {
+      Future {
+        path.writeText(template.fileContent)
+        (path, template.cursorPosition.toLSP)
+      }
     }
     result.failed.foreach {
       case NonFatal(e) => {
@@ -184,16 +195,6 @@ class NewFilesProvider(
       }
     }
     result
-  }
-
-  private def createFileAndWriteText(
-      path: AbsolutePath,
-      template: NewFileTemplate
-  ): Future[(AbsolutePath, Range)] = {
-    createFile(path).map { _ =>
-      path.writeText(template.fileContent)
-      (path, template.cursorPosition.toLSP)
-    }
   }
 
   private def openFile(path: AbsolutePath, cursorRange: Range): Unit = {

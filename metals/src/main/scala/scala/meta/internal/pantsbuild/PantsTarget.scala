@@ -1,7 +1,8 @@
 package scala.meta.internal.pantsbuild
 
-import java.nio.file.Path
 import java.nio.file.Files
+import java.nio.file.Path
+
 import scala.meta.io.AbsolutePath
 
 case class PantsTarget(
@@ -11,7 +12,8 @@ case class PantsTarget(
     excludes: collection.Set[String],
     platform: Option[String],
     transitiveDependencies: collection.Seq[String],
-    libraries: collection.Seq[String],
+    compileLibraries: collection.Seq[String],
+    runtimeLibraries: collection.Seq[String],
     isPantsTargetRoot: Boolean,
     targetType: TargetType,
     pantsTargetType: PantsTargetType,

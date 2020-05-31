@@ -5,15 +5,18 @@ import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
+
+import scala.concurrent.ExecutionContext
 import scala.concurrent.Future
 import scala.concurrent.Promise
-import scala.meta.internal.metals.MetalsEnrichments._
-import scala.util.control.NonFatal
-import org.eclipse.lsp4j.MessageParams
-import org.eclipse.lsp4j.MessageType
 import scala.util.Failure
 import scala.util.Success
-import scala.concurrent.ExecutionContext
+import scala.util.control.NonFatal
+
+import scala.meta.internal.metals.MetalsEnrichments._
+
+import org.eclipse.lsp4j.MessageParams
+import org.eclipse.lsp4j.MessageType
 
 /**
  * Manages sending metals/status notifications to the editor client.
@@ -32,12 +35,9 @@ final class StatusBar(
     client: () => MetalsLanguageClient,
     time: Time,
     progressTicks: ProgressTicks = ProgressTicks.braille,
-    val icons: Icons,
-    statusBar: StatusBarConfig,
-    clientCapabilities: ClientExperimentalCapabilities
+    clientConfig: ClientConfiguration
 )(implicit ec: ExecutionContext)
     extends Cancelable {
-
   def trackBlockingTask[T](message: String)(thunk: => T): T = {
     val promise = Promise[Unit]()
     trackFuture(message, promise.future)
@@ -49,7 +49,7 @@ final class StatusBar(
   }
 
   def trackSlowTask[T](message: String)(thunk: => T): T = {
-    if (statusBar.isOff && clientCapabilities.statusBarIsOff)
+    if (clientConfig.statusBarIsOff)
       trackBlockingTask(message)(thunk)
     else {
       val task = client().metalsSlowTask(MetalsSlowTaskParams(message))
@@ -67,7 +67,7 @@ final class StatusBar(
   }
 
   def trackSlowFuture[T](message: String, thunk: Future[T]): Unit = {
-    if (statusBar.isOff && clientCapabilities.statusBarIsOff)
+    if (clientConfig.statusBarIsOff)
       trackFuture(message, thunk)
     else {
       val task = client().metalsSlowTask(MetalsSlowTaskParams(message))

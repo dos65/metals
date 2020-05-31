@@ -1,22 +1,22 @@
 package scala.meta.internal.metals
 
+import scala.collection.mutable
+
+import scala.meta.internal.builds.BuildTool
+import scala.meta.internal.jdk.CollectionConverters._
+import scala.meta.internal.semver.SemVer
+import scala.meta.io.AbsolutePath
+
 import ch.epfl.scala.bsp4j.BspConnectionDetails
 import org.eclipse.lsp4j.MessageActionItem
 import org.eclipse.lsp4j.MessageParams
 import org.eclipse.lsp4j.MessageType
 import org.eclipse.lsp4j.ShowMessageRequestParams
-import scala.meta.internal.jdk.CollectionConverters._
-import scala.collection.mutable
-import scala.meta.internal.builds.BuildTool
-import scala.meta.io.AbsolutePath
-import scala.meta.internal.semver.SemVer
 
 /**
  * Constants for requests/dialogues via LSP window/showMessage and window/showMessageRequest.
  */
-object Messages extends Messages(Icons.vscode)
-
-class Messages(icons: Icons) {
+object Messages {
   val ImportProjectFailed = new MessageParams(
     MessageType.Error,
     "Import project failed, no functionality will work. See the logs for more details"
@@ -68,7 +68,20 @@ class Messages(icons: Icons) {
       )
       params
     }
+  }
 
+  object ChooseBuildTool {
+    def params(builtTools: List[BuildTool]): ShowMessageRequestParams = {
+      val messageActionItems =
+        builtTools.map(bt => new MessageActionItem(bt.executableName))
+      val params = new ShowMessageRequestParams()
+      params.setMessage(
+        "Multiple build definitions found. Which would you like to use?"
+      )
+      params.setType(MessageType.Info)
+      params.setActions(messageActionItems.asJava)
+      params
+    }
   }
 
   val PartialNavigation = new MetalsStatusParams(
@@ -312,10 +325,43 @@ class Messages(icons: Icons) {
       params.setActions(
         List(
           changeVersion,
-          notNow
+          notNow,
+          dontShowAgain
         ).asJava
       )
       params
+    }
+  }
+
+  val DebugErrorsPresent: MetalsStatusParams = new MetalsStatusParams(
+    "$(error) Errors in workspace",
+    tooltip = "Cannot run or debug due to existing errors in the workspace. " +
+      "Please fix the errors and retry.",
+    command = ClientCommands.FocusDiagnostics.id,
+    show = true
+  )
+
+  object DebugClassNotFound {
+
+    def invalidTargetClass(cls: String, target: String): MessageParams = {
+      new MessageParams(
+        MessageType.Error,
+        s"Class '$cls' not found in build target '$target'."
+      )
+    }
+
+    def invalidTarget(target: String): MessageParams = {
+      new MessageParams(
+        MessageType.Error,
+        s"Target '$target' not found."
+      )
+    }
+
+    def invalidClass(cls: String): MessageParams = {
+      new MessageParams(
+        MessageType.Error,
+        s"Class '$cls' not found."
+      )
     }
   }
 
@@ -341,7 +387,8 @@ class Messages(icons: Icons) {
       params.setActions(
         List(
           createFile,
-          notNow
+          notNow,
+          dontShowAgain
         ).asJava
       )
       params
@@ -446,5 +493,26 @@ class Messages(icons: Icons) {
         s"but class(es) with the same name also found in $anotherTargetsStr.\n" +
         "Build target can be specified with 'buildTarget' debug configuration"
     }
+  }
+
+  object ImportAmmoniteScript {
+    val message: String = "Ammonite script detected."
+    val importAll: String = "Import scripts automatically"
+    val doImport: String = "Import"
+    val dismiss: String = "Dismiss"
+    def params(): ShowMessageRequestParams = {
+      val params = new ShowMessageRequestParams(
+        List(importAll, doImport, dismiss)
+          .map(new MessageActionItem(_))
+          .asJava
+      )
+      params.setMessage(message)
+      params.setType(MessageType.Info)
+      params
+    }
+    def ImportFailed(script: String) = new MessageParams(
+      MessageType.Error,
+      s"Error importing $script. See the logs for more details."
+    )
   }
 }

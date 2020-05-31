@@ -1,10 +1,12 @@
 package tests
 
+import java.nio.file.Paths
+
+import scala.meta.XtensionSyntax
 import scala.meta.internal.jdk.CollectionConverters._
 import scala.meta.internal.metals.CompilerOffsetParams
+
 import munit.Location
-import java.nio.file.Paths
-import scala.meta.XtensionSyntax
 import munit.TestOptions
 
 abstract class BaseSignatureHelpSuite extends BasePCSuite {
@@ -65,7 +67,7 @@ abstract class BaseSignatureHelpSuite extends BasePCSuite {
                 val pdoc = doc(param.getDocumentation)
                   .stripPrefix("```scala\n")
                   .stripSuffix("\n```")
-                  .replaceAllLiterally("\n```\n", " ")
+                  .replace("\n```\n", " ")
                 if (includeDocs && pdoc.nonEmpty) {
                   out
                     .append("  @param ")
@@ -90,8 +92,8 @@ abstract class BaseSignatureHelpSuite extends BasePCSuite {
 
   override val compatProcess: Map[String, String => String] = Map(
     "2.13" -> { s =>
-      s.replaceAllLiterally("valueOf(obj: Any)", "valueOf(obj: Object)")
-        .replaceAllLiterally("Map[A, B]: Map", "Map[K, V]: Map")
+      s.replace("valueOf(obj: Any)", "valueOf(obj: Object)")
+        .replace("Map[A, B]: Map", "Map[K, V]: Map")
     }
   )
 }

@@ -19,8 +19,8 @@ of Metals:
 coursier bootstrap org.scalameta:metals_2.12:@VERSION@ -o metals -f
 ```
 
-(optional) It is recommended to enable JVM string de-duplication and provide
-generous stack size and memory options.
+(optional) It's recommended to enable JVM string de-duplication and provide
+a generous stack size and memory options.
 
 ```sh
 coursier bootstrap \
@@ -63,8 +63,8 @@ Metals supports two kinds of JSON-RPC endpoints:
 
 ## Metals server properties
 
-The Metals language server is configured through JVM system properties. A system
-property is passed to the server like this:
+The Metals language server is able to be configured through JVM system
+properties. A system property is passed to the server like this:
 
 ```sh
 # with `java` binary
@@ -77,8 +77,8 @@ The system properties control how Metals handles certain LSP endpoints. For
 example, in vim-lsc the `window/logMessage` notification is always displayed in
 the UI so `-Dmetals.status-bar=log-message` can be configured to direct
 higher-priority messages to the logs. However, whenever possible, if the client
-supports the ability to add in `experimental` items to the `ClientCapabilities`
-interface, this is preferable.
+supports the ability to add in `InitializationOptions`, this is preferable as it
+doesn't require any properties to be passed into the server.
 
 ### `-Dmetals.verbose`
 
@@ -119,7 +119,7 @@ Possible values:
   `window/showMessage` notifications. Used by coc.nvim and sublime at the
   moment.
 
-*Usage of `statusBarProvider` in `ClientCapabilities.experimental` is
+*Usage of `statusBarProvider` in `InitializationOptions` is
 preferable.*
 
 ### `-Dmetals.slow-task`
@@ -131,6 +131,9 @@ Possible values:
 - `status-bar`: the `metals/slowTask` request is not supported, but send updates
   about slow tasks via `metals/status`.
 
+*Usage of `slowTaskProvider` in `InitializationOptions` is
+preferable.*
+
 ### `-Dmetals.input-box`
 
 Possible values:
@@ -139,7 +142,7 @@ Possible values:
   Metals tries to fallback to `window/showMessageRequest` when possible.
 - `on`: the `metals/inputBox` request is fully supported.
 
-*Usage of `inputBoxProvider` in `ClientCapabilities.experimental` is preferable.*
+*Usage of `inputBoxProvider` in `InitializationOptions` is preferable.*
 
 ### `-Dmetals.execute-client-command`
 
@@ -151,8 +154,7 @@ Possible values:
 - `on`: the `metals/executeClientCommand` notification is supported and all
   [Metals client commands](#metals-client-commands) are handled.
 
-*Usage of `executeClientCommandProvider` in `ClientCapabilities.experimental` is
-preferable.*
+*Usage of `executeClientCommandProvider` in `InitializationOptions` is preferable.*
 
 ### `-Dmetals.http`
 
@@ -162,6 +164,8 @@ Possible values:
 - `on`: start a server with the [Metals HTTP client] to interact with the server
   through a basic web UI. This option is needed for editor clients that don't
   support necessary requests such as `window/showMessageRequest`.
+
+*Usage of `isHttpEnabled` in `InitializationOptions` is preferable.*
 
 ### `-Dmetals.icons`
 
@@ -184,10 +188,12 @@ Possible values:
   required by the LSP specification.
 - `on`: run `System.exit` after the `shutdown` request, going against the LSP
   specification. This option is enabled by default for Sublime Text to prevent
-  the Metals process from staying alive after Sublime Text is quit with `Cmd+Q`.
-  It's not possible for Sublime Text packages to register a callback when the
-  editor is quit. See [LSP#410](https://github.com/tomv564/LSP/issues/410) for
-  more details.
+  the Metals process from staying alive after Sublime Text has quit with
+  `Cmd+Q`.  It's not possible for Sublime Text packages to register a callback
+  when the editor has quit. See
+  [LSP#410](https://github.com/tomv564/LSP/issues/410) for more details.
+
+  *Usage of `isExitOnShutdown` in `InitializationOptions` is preferable.*
 
 ### `-Dmetals.bloop-protocol`
 
@@ -278,6 +284,9 @@ Possible values:
 - `off`: the client does not add any indentation when receiving a multi-line
   textEdit
 
+*Usage of `doctorProvider` in `InitializationOptions.compilerOptions.snippetAutoIndent` is preferable.*
+
+
 ### `-Dmetals.doctor-format`
 
 Format that you'd like Doctor to return information in.
@@ -288,7 +297,7 @@ Possible values:
   the browser or web view
 - `json`: json representation of the information returned by Doctor
 
-*Usage of `doctorProvider` in `ClientCapabilities.experimental` is preferable.*
+*Usage of `doctorProvider` in `InitializationOptions` is preferable.*
 
 ### `-Dbloop.embedded.version`
 
@@ -643,30 +652,62 @@ specification.
 - `didChangeWatchedFiles` client capability is used to determine whether to
   register file watchers.
 
-#### `experimental`
+#### `InitializationOptions` and `experimental`
 
-During the `initialize` we also have the ability to pass in `experimental`
-capabilities. In Metals we have a few different "providers". Some are also LSP
-extensions, such as `metals/inputBox` which you read about above, and others
-used to be server properties that have been migrated to `clientCapabilities`.
-Whenever possible, instead of introducing a new server property, try to
-introduce it here. The main reason for this is that it allows clients to
-initialize and define their "support" for certain things solely through LSP
-rather then using server properties. The currently available settings for
-`experimental` are listed below.
+During `initialize` we also have the ability to pass in `InitializationOptions`
+and `experimental` capabilities.  In Metals we have a few different "providers".
+Some are also LSP extensions, such as `metals/inputBox` which you read about
+above, and others used to be server properties that have been migrated to
+`clientCapabilities` and `InitializationOptions`.  Whenever possible, instead of
+introducing a new server property, try to introduce it here. The main reason for
+this is that it allows clients to initialize and define their "support" for
+certain things solely through LSP rather then using server properties.
+
+The currently available settings for `InitializationOptions` are listed below.
+
+```js
+    "InitializationOptions": {
+      "compilerOptions":{
+        "isCompletionItemDetailEnabled": boolean,
+        "isCompletionItemDocumentationEnabled": boolean,
+        "isHoverDocumentationEnabled": boolean,
+        "snippetAutoIndent": boolean,
+        "isSignatureHelpDocumentationEnabled": boolean,
+        "isCompletionItemResolve": boolean
+      }
+      "debuggingProvider": boolean,
+      "decorationProvider": boolean,
+      "didFocusProvider": boolean,
+      "doctorProvider": "json" | "html",
+      "executeClientCommandProvider": boolean,
+      "inputBoxProvider": boolean,
+      "isExitOnShutdown" : boolean,
+      "isHttpEnabled": boolean,
+      "openFilesOnRenameProvider": boolean,
+      "quickPickProvider": boolean,
+      "slowTaskProvider": boolean,
+      "statusBarProvider": "on" | "off" | "show-message" | "log-message",
+      "treeViewProvider": boolean
+    }
+```
+
+The currently available settings for `experimental` are listed below.
+While these will work to correctly configure the server, they are all available
+to be set via `InitializationOptions`, which is preferable.
 
 ```js
     "experimental": {
-      "treeViewProvider": boolean,
       "debuggingProvider": boolean,
       "decorationProvider": boolean,
-      "inputBoxProvider": boolean,
-      "quickPickProvider": boolean,
       "didFocusProvider": boolean,
-      "slowTaskProvider": boolean,
+      "doctorProvider": boolean,
       "executeClientCommandProvider": boolean,
-      "doctorProvider": "json" | "html",
-      "statusBarProvider": "on" | "off" | "show-message" | "log-message"
+      "inputBoxProvider": boolean,
+      "openFilesOnRenameProvider": boolean,
+      "quickPickProvider": boolean,
+      "slowTaskProvider": boolean,
+      "statusBarProvider": boolean,
+      "treeViewProvider": boolean
     }
 ```
 

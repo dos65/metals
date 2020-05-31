@@ -1,9 +1,10 @@
 package scala.meta.internal.metals
 
-import ch.epfl.scala.{bsp4j => b}
 import scala.util.Failure
 import scala.util.Success
 import scala.util.Try
+
+import ch.epfl.scala.{bsp4j => b}
 
 class BuildTargetClassesFinder(
     buildTargets: BuildTargets,
@@ -48,9 +49,13 @@ class BuildTargetClassesFinder(
   ): Try[List[(A, b.BuildTarget)]] =
     buildTarget.fold {
       val classes =
-        findClassesByName(className).collect {
-          case (clazz, BuildTargetIdOf(buildTarget)) => (clazz, buildTarget)
-        }
+        findClassesByName(className)
+          .collect {
+            case (clazz, BuildTargetIdOf(buildTarget)) => (clazz, buildTarget)
+          }
+          .sortBy {
+            case (_, target) => buildTargets.buildTargetsOrder(target.getId())
+          }
       if (classes.nonEmpty) Success(classes)
       else
         Failure(new ClassNotFoundException(className))
@@ -89,7 +94,7 @@ class BuildTargetClassesFinder(
 
 }
 
-class BuildTargetNotFoundException(buildTargetName: String)
+case class BuildTargetNotFoundException(buildTargetName: String)
     extends Exception(s"Build target not found: $buildTargetName")
 
 case class ClassNotFoundInBuildTargetException(

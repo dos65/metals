@@ -1,13 +1,18 @@
 package scala.meta.internal.mtags
 
-import java.net.{URL, URLClassLoader}
+import java.net.URL
+import java.net.URLClassLoader
 import java.util
+
+import scala.collection.Seq
+import scala.util.Try
+
 import scala.meta.internal.jdk.CollectionConverters._
 import scala.meta.io.AbsolutePath
 import scala.meta.io.Classpath
 import scala.meta.io.RelativePath
+
 import sun.misc.Unsafe
-import scala.collection.Seq
 
 object ClasspathLoader {
 
@@ -75,6 +80,10 @@ final class ClasspathLoader() {
   /** Load a resource from the classpath. */
   def load(path: RelativePath): Option[AbsolutePath] = {
     loader.resolve(path)
+  }
+
+  def loadClass(symbol: String): Option[Class[_]] = {
+    Try(loader.loadClass(symbol)).toOption
   }
 
   /** Load a resource from the classpath. */

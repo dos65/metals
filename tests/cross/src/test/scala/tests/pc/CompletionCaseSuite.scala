@@ -2,13 +2,14 @@ package tests.pc
 
 import scala.meta.internal.pc.PresentationCompilerConfigImpl
 import scala.meta.pc.PresentationCompilerConfig
+
 import tests.BaseCompletionSuite
 import tests.BuildInfoVersions
 
 class CompletionCaseSuite extends BaseCompletionSuite {
 
   override def excludedScalaVersions: Set[String] =
-    Set(BuildInfoVersions.scala3)
+    BuildInfoVersions.scala3Versions.toSet
 
   def paramHint: Option[String] = Some("param-hint")
 
@@ -20,9 +21,9 @@ class CompletionCaseSuite extends BaseCompletionSuite {
   override val compatProcess: Map[String, String => String] = Map(
     "2.11" -> { (s: String) =>
       // The standard library renamed fields of Some/Left/Right for 2.12.0.
-      s.replaceAllLiterally("Some(value)", "Some(x)")
-        .replaceAllLiterally("Left(value)", "Left(a)")
-        .replaceAllLiterally("Right(value)", "Right(b)")
+      s.replace("Some(value)", "Some(x)")
+        .replace("Left(value)", "Left(a)")
+        .replace("Right(value)", "Right(b)")
     }
   )
 

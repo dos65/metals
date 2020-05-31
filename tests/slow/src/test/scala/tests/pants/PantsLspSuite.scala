@@ -1,14 +1,17 @@
 package tests.pants
 
-import scala.meta.internal.builds.{PantsBuildTool, PantsDigest}
+import scala.sys.process._
+import scala.util.control.NonFatal
+
+import scala.meta.internal.builds.BuildTool
+import scala.meta.internal.builds.PantsBuildTool
+import scala.meta.internal.builds.PantsDigest
+import scala.meta.internal.metals.BuildInfo
 import scala.meta.internal.metals.UserConfiguration
 import scala.meta.io.AbsolutePath
+
 import tests.BaseImportSuite
-import scala.meta.internal.builds.BuildTool
 import tests.FileLayout
-import scala.meta.internal.metals.BuildInfo
-import scala.util.control.NonFatal
-import scala.sys.process._
 
 class PantsLspSuite extends BaseImportSuite("pants") {
 
@@ -68,7 +71,7 @@ class PantsLspSuite extends BaseImportSuite("pants") {
           |
           |/pants.ini
           |[GLOBAL]
-          |pants_version: 1.24.0rc1
+          |pants_version: 1.26.0rc2
           |[scala]
           |version: custom
           |suffix_version: 2.12
@@ -154,7 +157,7 @@ class PantsLspSuite extends BaseImportSuite("pants") {
       _ = assertNoDiagnostics() // "core" was compiled during import
       _ <- server.didOpen("core/Lib.scala")
       _ <- server.didSave("core/Lib.scala")(
-        _.replaceAllLiterally("greeting", "greeting: Int")
+        _.replace("greeting", "greeting: Int")
       )
       _ = assertNoDiagnostics() // no errors because "core" is not exported.
     } yield ()

@@ -11,7 +11,7 @@ class SignatureHelpDocSuite extends BaseSignatureHelpSuite {
 
   // @tgodzik docs not yet supported for Scala 3
   override def excludedScalaVersions: Set[String] =
-    Set(BuildInfoVersions.scala3)
+    BuildInfoVersions.scala3Versions.toSet
 
   val foldLatestDocs: String =
     """|Returns the result of applying `f` to this [scala.Option](scala.Option)'s
@@ -68,7 +68,6 @@ class SignatureHelpDocSuite extends BaseSignatureHelpSuite {
     """.stripMargin,
     compat = Map(
       "2.12.8" -> foldOlderDocs1,
-      "2.12.7" -> foldOlderDocs1,
       "2.13" ->
         s"""$foldLatestDocs
            |**Parameters**
@@ -118,7 +117,6 @@ class SignatureHelpDocSuite extends BaseSignatureHelpSuite {
         |""".stripMargin,
     compat = Map(
       "2.12.8" -> foldOlderDocs2,
-      "2.12.7" -> foldOlderDocs2,
       "2.13" ->
         s"""|$foldLatestDocs
             |**Parameters**

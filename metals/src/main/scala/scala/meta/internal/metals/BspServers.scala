@@ -1,19 +1,23 @@
 package scala.meta.internal.metals
 
-import ch.epfl.scala.bsp4j.BspConnectionDetails
-import com.google.gson.Gson
-import io.github.soc.directories.ProjectDirectories
 import java.nio.charset.Charset
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
+
 import scala.concurrent.ExecutionContextExecutorService
 import scala.concurrent.Future
+import scala.concurrent.Promise
+import scala.util.Try
+
 import scala.meta.internal.io.FileIO
 import scala.meta.internal.metals.Messages.BspSwitch
 import scala.meta.internal.metals.MetalsEnrichments._
 import scala.meta.internal.mtags.MD5
 import scala.meta.io.AbsolutePath
-import scala.util.Try
+
+import ch.epfl.scala.bsp4j.BspConnectionDetails
+import com.google.gson.Gson
+import io.github.soc.directories.ProjectDirectories
 
 /**
  * Implements BSP server discovery, named "BSP Connection Protocol" in the spec.
@@ -26,7 +30,8 @@ final class BspServers(
     client: MetalsLanguageClient,
     buildClient: MetalsBuildClient,
     tables: Tables,
-    bspGlobalInstallDirectories: List[AbsolutePath]
+    bspGlobalInstallDirectories: List[AbsolutePath],
+    config: MetalsServerConfig
 )(implicit ec: ExecutionContextExecutorService) {
 
   def newServer(): Future[Option[BuildServerConnection]] = {
@@ -70,6 +75,12 @@ final class BspServers(
         s"${details.getName} input stream"
       )
 
+      val finished = Promise[Unit]()
+      Future {
+        process.waitFor()
+        finished.success(())
+      }
+
       Future.successful {
         SocketConnection(
           details.getName(),
@@ -77,7 +88,8 @@ final class BspServers(
           input,
           List(
             Cancelable(() => process.destroy())
-          )
+          ),
+          finished
         )
       }
 
@@ -88,7 +100,8 @@ final class BspServers(
       buildClient,
       client,
       newConnection,
-      tables
+      tables.dismissedNotifications.ReconnectBsp,
+      config
     )
   }
 

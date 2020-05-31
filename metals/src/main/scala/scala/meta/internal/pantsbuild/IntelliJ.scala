@@ -1,19 +1,28 @@
 package scala.meta.internal.pantsbuild
 
+import java.net.URL
+import java.nio.charset.StandardCharsets
+import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
-import java.nio.file.Files
-import scala.sys.process._
-import java.nio.charset.StandardCharsets
-import scala.meta.internal.metals.{BuildInfo => V}
-import java.net.URL
-import com.google.gson.JsonArray
-import scala.meta.internal.pantsbuild.commands.OpenOptions
-import scala.meta.internal.pantsbuild.commands.{Project, RefreshCommand}
 import java.nio.file.StandardOpenOption
+
+import scala.sys.process._
+
+import scala.meta.internal.metals.MetalsEnrichments._
+import scala.meta.internal.metals.{BuildInfo => V}
+import scala.meta.internal.pantsbuild.commands.OpenOptions
+import scala.meta.internal.pantsbuild.commands.Project
+import scala.meta.internal.pantsbuild.commands.RefreshCommand
+import scala.meta.internal.zipkin.Property
+import scala.meta.internal.zipkin.ZipkinProperties
+
+import bloop.data.TraceSettings
 import bloop.data.WorkspaceSettings
 import bloop.io.AbsolutePath
 import bloop.logging.NoopLogger
+import ujson.Obj
+import ujson.Str
 
 object IntelliJ {
   def launch(project: Project, open: OpenOptions): Unit = {
@@ -49,35 +58,39 @@ object IntelliJ {
   }
 
   /** The .bsp/bloop.json file is necessary for IntelliJ to automatically import the project */
-  def writeBsp(project: Project, coursierBinary: Option[Path] = None): Unit = {
+  def writeBsp(
+      project: Project,
+      coursierBinary: Option[Path] = None,
+      exportResult: Option[PantsExportResult] = None
+  ): Unit = {
     val bspJson = project.root.bspJson.toNIO
     Files.createDirectories(bspJson.getParent)
     val coursier = coursierBinary.getOrElse(
       downloadCoursier(bspJson.resolveSibling("coursier"))
     )
-    val targetsJson = new JsonArray()
-    project.targets.foreach { target => targetsJson.add(target) }
-    val newJson = s"""{
-  "name": "Bloop",
-  "version": "${V.bloopNightlyVersion}",
-  "bspVersion": "${V.bspVersion}",
-  "languages": ["scala", "java"],
-  "argv": [
-    "$coursier",
-    "launch",
-    "ch.epfl.scala:bloop-launcher-core_2.12:${V.bloopNightlyVersion}",
-    "--ttl",
-    "Inf",
-    "--",
-    "${V.bloopVersion}"
-  ],
-  "pantsTargets": ${targetsJson.toString},
-  "X-detectExternalProjectFiles": false
-}
-"""
+    val newJson = Obj()
+    newJson("name") = "Bloop"
+    newJson("version") = V.bloopNightlyVersion
+    newJson("bspVersion") = V.bspVersion
+    newJson("languages") = List[String]("scala", "java")
+    newJson("argv") = List[String](
+      coursier.toString(),
+      "launch",
+      s"ch.epfl.scala:bloop-launcher-core_2.12:${V.bloopNightlyVersion}",
+      "--ttl",
+      "Inf",
+      "--",
+      V.bloopVersion
+    )
+    newJson("sources") = project.sources
+    newJson("pantsTargets") = project.targets
+    newJson("fastpassVersion") = V.metalsVersion
+    newJson("fastpassProjectName") = project.name
+    newJson("pantsTargets") = project.targets
+    newJson("X-detectExternalProjectFiles") = false
     Files.write(
       bspJson,
-      newJson.getBytes(StandardCharsets.UTF_8),
+      newJson.render(indent = 2).getBytes(StandardCharsets.UTF_8),
       StandardOpenOption.TRUNCATE_EXISTING,
       StandardOpenOption.CREATE
     )
@@ -99,14 +112,31 @@ object IntelliJ {
       "--no-bloop-exit",
       project.name
     )
+
+    val workspace = scala.meta.io.AbsolutePath(project.common.workspace)
+    val props = Property.fromFile(workspace)
+
+    val traceSettings = TraceSettings(
+      ZipkinProperties.zipkinServerUrl.value(props),
+      Property.booleanValue(ZipkinProperties.debugTracing, props),
+      Property.booleanValue(ZipkinProperties.verbose, props),
+      ZipkinProperties.localServiceName.value(props),
+      ZipkinProperties.traceStartAnnotation.value(props),
+      ZipkinProperties.traceEndAnnotation.value(props)
+    )
+
     val configDir = AbsolutePath(project.root.bloopRoot.toNIO)
     if (!configDir.exists) configDir.createDirectories
     val currentSettings = WorkspaceSettings
       .readFromFile(configDir, NoopLogger)
-      .getOrElse(WorkspaceSettings(None, None, None))
+      .getOrElse(WorkspaceSettings(None, None, None, None))
     val settings =
-      currentSettings.copy(refreshProjectsCommand = Some(refreshCommand))
+      currentSettings.copy(
+        refreshProjectsCommand = Some(refreshCommand),
+        traceSettings = Some(traceSettings)
+      )
     WorkspaceSettings.writeToFile(configDir, settings, NoopLogger)
+    exportResult.foreach(r => writeLibraryDependencies(project, r))
   }
 
   private def downloadCoursier(destination: Path): Path = {
@@ -123,5 +153,21 @@ object IntelliJ {
       destination.toFile().setExecutable(true)
       destination
     }
+  }
+
+  private def writeLibraryDependencies(
+      project: Project,
+      export: PantsExportResult
+  ): Unit = {
+    val libraries = Obj()
+    export.pantsExport.libraries.valuesIterator.foreach { obj =>
+      for {
+        default <- obj.default
+        sources <- obj.sources
+      } {
+        libraries(default.toString()) = Str(sources.toString())
+      }
+    }
+    project.root.pantsLibrariesJson.writeText(ujson.write(libraries))
   }
 }

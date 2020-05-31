@@ -1,33 +1,36 @@
 package scala.meta.internal.implementation
 
-import org.eclipse.lsp4j.Location
-import org.eclipse.lsp4j.TextDocumentPositionParams
+import java.nio.file.Path
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.ConcurrentLinkedQueue
+
+import scala.collection.mutable
+import scala.util.control.NonFatal
+
+import scala.meta.internal.metals.Buffers
+import scala.meta.internal.metals.BuildTargets
+import scala.meta.internal.metals.DefinitionProvider
+import scala.meta.internal.metals.MetalsEnrichments._
 import scala.meta.internal.mtags.GlobalSymbolIndex
 import scala.meta.internal.mtags.Mtags
 import scala.meta.internal.mtags.Semanticdbs
 import scala.meta.internal.mtags.SymbolDefinition
 import scala.meta.internal.mtags.{Symbol => MSymbol}
-import scala.meta.internal.metals.MetalsEnrichments._
-import scala.meta.io.AbsolutePath
-import scala.meta.internal.semanticdb.TextDocuments
-import scala.meta.internal.semanticdb.SymbolOccurrence
 import scala.meta.internal.semanticdb.ClassSignature
-import scala.meta.internal.semanticdb.TypeRef
-import scala.meta.internal.semanticdb.Signature
-import scala.meta.internal.semanticdb.TextDocument
-import java.util.concurrent.ConcurrentHashMap
-import java.nio.file.Path
-import scala.meta.internal.semanticdb.SymbolInformation
 import scala.meta.internal.semanticdb.MethodSignature
-import scala.meta.internal.metals.BuildTargets
-import scala.meta.internal.metals.Buffers
-import scala.meta.internal.metals.DefinitionProvider
 import scala.meta.internal.semanticdb.Scala._
+import scala.meta.internal.semanticdb.Signature
+import scala.meta.internal.semanticdb.SymbolInformation
+import scala.meta.internal.semanticdb.SymbolOccurrence
+import scala.meta.internal.semanticdb.TextDocument
+import scala.meta.internal.semanticdb.TextDocuments
+import scala.meta.internal.semanticdb.TypeRef
 import scala.meta.internal.semanticdb.TypeSignature
-import scala.collection.mutable
 import scala.meta.internal.symtab.GlobalSymbolTable
-import scala.util.control.NonFatal
-import java.util.concurrent.ConcurrentLinkedQueue
+import scala.meta.io.AbsolutePath
+
+import org.eclipse.lsp4j.Location
+import org.eclipse.lsp4j.TextDocumentPositionParams
 
 final class ImplementationProvider(
     semanticdbs: Semanticdbs,
@@ -88,12 +91,31 @@ final class ImplementationProvider(
       textDocumentWithPath.textDocument
     )
 
+  def defaultSymbolSearchMemoize(
+      anyWorkspacePath: AbsolutePath,
+      textDocument: TextDocument
+  ): String => Option[SymbolInformation] = {
+    lazy val global =
+      globalTable.globalSymbolTableFor(anyWorkspacePath)
+    val textSymbolsMap = textDocument.symbols.map(s => s.symbol -> s).toMap
+    val memoized: mutable.Map[String, SymbolInformation] = mutable.Map.empty
+    symbol => {
+      val result = memoized
+        .get(symbol)
+        .orElse(textSymbolsMap.get(symbol))
+        .orElse(findSymbolInformation(symbol))
+        .orElse(global.flatMap(_.safeInfo(symbol)))
+      result.foreach(r => memoized.put(symbol, r))
+      result
+    }
+  }
+
   def defaultSymbolSearch(
       anyWorkspacePath: AbsolutePath,
       textDocument: TextDocument
   ): String => Option[SymbolInformation] = {
     lazy val global =
-      new GlobalClassTable(buildTargets).globalSymbolTableFor(anyWorkspacePath)
+      globalTable.globalSymbolTableFor(anyWorkspacePath)
     symbol => {
       textDocument.symbols
         .find(_.symbol == symbol)
@@ -318,7 +340,14 @@ final class ImplementationProvider(
         classContext,
         implReal
       )
-      implOccurrence <- findDefOccurrence(implDocument, implSymbol, source)
+      if !findSymbol(implDocument, implSymbol).exists(
+        _.kind == SymbolInformation.Kind.TYPE
+      )
+      implOccurrence <- findDefOccurrence(
+        implDocument,
+        implSymbol,
+        source
+      )
       range <- implOccurrence.range
       revised <- distance.toRevised(range.toLSP)
     } { allLocations.add(new Location(file.toUri.toString, revised)) }
@@ -485,7 +514,7 @@ object ImplementationProvider {
           Seq(
             tr.symbol -> ClassLocation(
               symbol,
-              None,
+              filePath.map(_.toNIO),
               tr,
               typeSig.typeParameters
             )

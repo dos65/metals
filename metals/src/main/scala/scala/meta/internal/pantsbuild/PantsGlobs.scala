@@ -1,12 +1,14 @@
 package scala.meta.internal.pantsbuild
 
 import java.nio.file.Path
-import ujson.Value
-import ujson.Obj
-import ujson.Arr
-import ujson.Str
-import bloop.config.{Config => C}
+
 import scala.meta.io.AbsolutePath
+
+import bloop.config.{Config => C}
+import ujson.Arr
+import ujson.Obj
+import ujson.Str
+import ujson.Value
 
 case class PantsGlobs(
     include: List[String],
@@ -24,7 +26,7 @@ case class PantsGlobs(
         // NOTE(olafur) Pants globs interpret "**/*.scala" as "zero or more
         // directories" while Bloop uses `java.nio.file.PathMatcher`, which
         // interprets it as "one or more directories".
-        .replaceAllLiterally("**/*", "**")
+        .replace("**/*", "**")
       s"glob:$pattern"
     }
     val includeGlobs = include.map(relativizeGlob)

@@ -1,27 +1,30 @@
 package scala.meta.internal.metals
 
-import java.util
-import java.{util => ju}
 import java.lang.{Iterable => JIterable}
-import ch.epfl.scala.bsp4j.BuildTarget
-import ch.epfl.scala.bsp4j.BuildTargetIdentifier
-import ch.epfl.scala.bsp4j.ScalacOptionsItem
-import ch.epfl.scala.bsp4j.ScalacOptionsResult
-import ch.epfl.scala.bsp4j.ScalaBuildTarget
-import ch.epfl.scala.bsp4j.WorkspaceBuildTargetsResult
+import java.net.URLClassLoader
+import java.util
 import java.util.concurrent.ConcurrentLinkedQueue
+import java.{util => ju}
+
 import scala.annotation.tailrec
 import scala.collection.concurrent.TrieMap
 import scala.collection.mutable
 import scala.collection.mutable.ListBuffer
-import scala.meta.internal.metals.MetalsEnrichments._
-import scala.meta.io.AbsolutePath
-import scala.meta.internal.mtags.Symbol
 import scala.util.Try
-import scala.meta.internal.mtags.Mtags
-import scala.meta.internal.io.PathIO
-import java.net.URLClassLoader
 import scala.util.control.NonFatal
+
+import scala.meta.internal.io.PathIO
+import scala.meta.internal.metals.MetalsEnrichments._
+import scala.meta.internal.mtags.Mtags
+import scala.meta.internal.mtags.Symbol
+import scala.meta.io.AbsolutePath
+
+import ch.epfl.scala.bsp4j.BuildTarget
+import ch.epfl.scala.bsp4j.BuildTargetIdentifier
+import ch.epfl.scala.bsp4j.ScalaBuildTarget
+import ch.epfl.scala.bsp4j.ScalacOptionsItem
+import ch.epfl.scala.bsp4j.ScalacOptionsResult
+import ch.epfl.scala.bsp4j.WorkspaceBuildTargetsResult
 
 /**
  * In-memory cache for looking up build server metadata.
@@ -49,6 +52,27 @@ final class BuildTargets() {
   private val buildTargetInference =
     new ConcurrentLinkedQueue[AbsolutePath => Seq[BuildTargetIdentifier]]()
 
+  val buildTargetsOrder: BuildTargetIdentifier => Int = {
+    (t: BuildTargetIdentifier) =>
+      var score = 1
+
+      val isSupportedScalaVersion = scalaInfo(t).exists(t =>
+        ScalaVersions.isSupportedScalaVersion(t.getScalaVersion())
+      )
+      if (isSupportedScalaVersion) score <<= 2
+
+      val isJVM = scalacOptions(t).exists(_.isJVM)
+      if (isJVM) score <<= 1
+
+      // note(@tgodzik) once the support for Scala 3 is on par with Scala 2 this can be removed
+      val isScala2 = scalaInfo(t).exists(info =>
+        !ScalaVersions.isScala3Version(info.getScalaVersion())
+      )
+      if (isScala2) score <<= 1
+
+      score
+  }
+
   def setTables(newTables: Tables): Unit = {
     tables = Some(newTables)
   }
@@ -72,6 +96,8 @@ final class BuildTargets() {
   def scalacOptions: Iterable[ScalacOptionsItem] =
     scalacTargetInfo.values
 
+  def allBuildTargetIds: Seq[BuildTargetIdentifier] =
+    all.toSeq.map(_.info.getId())
   def all: Iterator[ScalaTarget] =
     buildTargetInfo.iterator.flatMap({ case (_, bt) => toScalaTarget(bt) })
 
@@ -213,25 +239,7 @@ final class BuildTargets() {
         .flatMap(_.dependencySources.getBuildTarget(source))
         .orElse(inferBuildTarget(source))
     } else {
-      Some(buildTargets.maxBy { t =>
-        var score = 1
-
-        val isSupportedScalaVersion = scalaInfo(t).exists(t =>
-          ScalaVersions.isSupportedScalaVersion(t.getScalaVersion())
-        )
-        if (isSupportedScalaVersion) score <<= 2
-
-        val isJVM = scalacOptions(t).exists(_.isJVM)
-        if (isJVM) score <<= 1
-
-        // note(@tgodzik) once the support for Scala 3 is on par with Scala 2 this can be removed
-        val isScala2 = scalaInfo(t).exists(info =>
-          !ScalaVersions.isScala3Version(info.getScalaVersion())
-        )
-        if (isScala2) score <<= 1
-
-        score
-      })
+      Some(buildTargets.maxBy(buildTargetsOrder))
     }
   }
 
@@ -345,7 +353,8 @@ final class BuildTargets() {
     sourceItemsToBuildTarget
       .collectFirst {
         case (source, buildTargets)
-            if sourceItem.toNIO.startsWith(source.toNIO) =>
+            if sourceItem.toNIO.getFileSystem == source.toNIO.getFileSystem &&
+              sourceItem.toNIO.startsWith(source.toNIO) =>
           buildTargets.asScala
       }
       .getOrElse(Iterable.empty)

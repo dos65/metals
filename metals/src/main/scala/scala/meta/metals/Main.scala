@@ -2,13 +2,16 @@ package scala.meta.metals
 
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.Executors
-import org.eclipse.lsp4j.jsonrpc.Launcher
+
 import scala.concurrent.ExecutionContext
+import scala.util.control.NonFatal
+
 import scala.meta.internal.metals.GlobalTrace
 import scala.meta.internal.metals.MetalsLanguageClient
 import scala.meta.internal.metals.MetalsLanguageServer
 import scala.meta.internal.metals.MetalsServerConfig
-import scala.util.control.NonFatal
+
+import org.eclipse.lsp4j.jsonrpc.Launcher
 
 object Main {
   def main(args: Array[String]): Unit = {
@@ -17,15 +20,15 @@ object Main {
     val tracePrinter = GlobalTrace.setup("LSP")
     val exec = Executors.newCachedThreadPool()
     val ec = ExecutionContext.fromExecutorService(exec)
-    val config = MetalsServerConfig.default
+    val initialConfig = MetalsServerConfig.default
     val server = new MetalsLanguageServer(
       ec,
       redirectSystemOut = true,
       charset = StandardCharsets.UTF_8,
-      config = config
+      initialConfig = initialConfig
     )
     try {
-      scribe.info(s"Starting Metals server with configuration: $config")
+      scribe.info(s"Starting Metals server with configuration: $initialConfig")
       val launcher = new Launcher.Builder[MetalsLanguageClient]()
         .traceMessages(tracePrinter)
         .setExecutorService(exec)

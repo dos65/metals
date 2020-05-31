@@ -1,10 +1,11 @@
 package scala.meta.internal.metals
 
-import java.{util => ju}
 import java.util.Collections
-import org.eclipse.lsp4j.TextDocumentPositionParams
-import org.eclipse.lsp4j.Location
-import scala.meta.pc.CancelToken
+import java.{util => ju}
+
+import scala.concurrent.ExecutionContext
+import scala.concurrent.Future
+
 import scala.meta.inputs.Input
 import scala.meta.internal.metals.MetalsEnrichments._
 import scala.meta.internal.mtags.GlobalSymbolIndex
@@ -12,14 +13,16 @@ import scala.meta.internal.mtags.Mtags
 import scala.meta.internal.mtags.Semanticdbs
 import scala.meta.internal.mtags.Symbol
 import scala.meta.internal.mtags.SymbolDefinition
+import scala.meta.internal.remotels.RemoteLanguageServer
 import scala.meta.internal.semanticdb.Scala._
+import scala.meta.internal.semanticdb.SymbolOccurrence
 import scala.meta.internal.semanticdb.TextDocument
 import scala.meta.io.AbsolutePath
-import scala.concurrent.Future
-import scala.concurrent.ExecutionContext
-import scala.meta.internal.semanticdb.SymbolOccurrence
+import scala.meta.pc.CancelToken
+
+import org.eclipse.lsp4j.Location
 import org.eclipse.lsp4j.Position
-import scala.meta.internal.remotels.RemoteLanguageServer
+import org.eclipse.lsp4j.TextDocumentPositionParams
 
 /**
  * Implements goto definition that works even in code that doesn't parse.
@@ -78,7 +81,7 @@ final class DefinitionProvider(
       if (result.isEmpty) {
         compilers().definition(params, token)
       } else {
-        if (result.isEmpty && fromSemanticdb.isEmpty) {
+        if (fromSemanticdb.isEmpty) {
           warnings.noSemanticdb(path)
         }
         Future.successful(result)
@@ -226,9 +229,10 @@ class DestinationProvider(
     val defnRevisedInput = symbolDefinition.path.toInput
     // Read text file from disk instead of editor buffers because the file
     // on disk is more likely to parse.
-    val parsed =
+    lazy val parsed =
       mtags.index(symbolDefinition.path.toLanguage, defnRevisedInput)
-    if (parsed.occurrences.isEmpty) {
+
+    if (symbolDefinition.path.isAmmoniteScript || parsed.occurrences.isEmpty) {
       // Fall back to SemanticDB on disk, if any
       semanticdbsFallback
         .flatMap {

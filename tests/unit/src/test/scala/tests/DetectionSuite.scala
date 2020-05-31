@@ -2,6 +2,7 @@ package tests
 
 import scala.meta.internal.builds.BuildTools
 import scala.meta.io.AbsolutePath
+
 import munit.Location
 
 class DetectionSuite extends BaseSuite {
@@ -204,6 +205,31 @@ class DetectionSuite extends BaseSuite {
        |  <artifactId>my-app</artifactId>
        |  <version>1</version>
        |</project>
+       |""".stripMargin
+  )
+
+  /**------------ Multiple Build Files ------------**/
+  def checkMulti(name: String, layout: String, isTrue: Boolean = true)(
+      implicit loc: Location
+  ): Unit = {
+    test(s"sbt-$name") {
+      check(
+        layout,
+        p => {
+          val bt = BuildTools.default(p)
+          bt.isSbt && bt.isMill
+        },
+        isTrue
+      )
+    }
+  }
+
+  checkMulti(
+    "sbt-and-mill",
+    """|/build.sbt
+       |lazy val a = project
+       |/build.sc
+       |import mill._
        |""".stripMargin
   )
 }

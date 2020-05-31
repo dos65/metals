@@ -1,8 +1,10 @@
 package scala.meta.internal.metals
 
-import scala.util.matching.Regex
-import ch.epfl.scala.{bsp4j => b}
 import javax.annotation.Nullable
+
+import scala.util.matching.Regex
+
+import ch.epfl.scala.{bsp4j => b}
 
 /**
  * LSP commands supported by the Metals language server.
@@ -37,7 +39,7 @@ object ServerCommands {
 
   val RestartBuildServer = new Command(
     "build-restart",
-    "Restart the build server",
+    "Restart build server",
     """Unconditionally stop the current running Bloop server and start a new one using Bloop launcher"""
   )
 
@@ -73,6 +75,16 @@ object ServerCommands {
        |Run the cascade compile task to additionally compile the inverse dependencies of the current build target.
        |For example, if you change the API in main sources and run cascade compile then it will also compile the
        |test sources that depend on main.
+       |""".stripMargin
+  )
+
+  val CleanCompile = new Command(
+    "compile-clean",
+    "Clean compile workspace",
+    """|Recompile all build targets in this workspace.
+       |
+       |By default, Metals compiles the files incrementally. In case of any compile artifacts corruption 
+       |this command might be run to make sure everything is recompiled correctly.
        |""".stripMargin
   )
 
@@ -147,8 +159,8 @@ object ServerCommands {
     "Goto location",
     """|Move the cursor to the definition of the argument symbol.
        |
-       |Arguments: [string], where the string is a SemanticDB symbol.
-       |""".stripMargin
+       |""".stripMargin,
+    "[string], where the string is a SemanticDB symbol."
   )
 
   val GotoSuperMethod = new Command(
@@ -161,8 +173,11 @@ object ServerCommands {
        |If symbol under cursor is invalid or does not override anything then command is ignored.
        |
        |Note: document in json argument must be absolute path.
+       |""".stripMargin,
+    """|
+       |Object with `document` and `position`
        |
-       |Arguments:
+       |Example:
        |```json
        |{
        |  document: "file:///home/dev/foo/Bar.scala",
@@ -182,8 +197,10 @@ object ServerCommands {
        |QuickPick will show up only if more than one result is found.
        |
        |Note: document in json argument must be absolute path.
+       |""".stripMargin,
+    """|Object with `document` and `position`
        |
-       |Arguments:
+       |Example:
        |```json
        |{
        |  document: "file:///home/dev/foo/Bar.scala",
@@ -198,10 +215,9 @@ object ServerCommands {
     "Create new scala file",
     """|Create and open new file with either scala class, object, trait, package object or worksheet.
        |
-       |Arguments: [string], where the string is a directory location for the new file.
-       |
        |Note: requires 'metals/inputBox' capability from language client.
-       |""".stripMargin
+       |""".stripMargin,
+    "[string], where the string is a directory location for the new file."
   )
 
   /**
@@ -264,6 +280,18 @@ object ServerCommands {
     "Stay up to date with the latest release announcements and learn new Scala code editing tricks."
   )
 
+  val StartAmmoniteBuildServer = new Command(
+    "ammonite-start",
+    "Start an Ammonite build server",
+    "Something"
+  )
+
+  val StopAmmoniteBuildServer = new Command(
+    "ammonite-stop",
+    "Stop Ammonite build server",
+    "Something"
+  )
+
   def all: List[Command] = List(
     ImportBuild,
     RestartBuildServer,
@@ -277,7 +305,9 @@ object ServerCommands {
     GotoLocation,
     NewScalaFile,
     GotoSuperMethod,
-    SuperMethodHierarchy
+    SuperMethodHierarchy,
+    StartAmmoniteBuildServer,
+    StopAmmoniteBuildServer
   )
 }
 

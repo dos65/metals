@@ -1,13 +1,13 @@
 package tests.pc
 
-import tests.BaseCompletionSuite
 import munit.Location
+import tests.BaseCompletionSuite
 import tests.BuildInfoVersions
 
 class PrettyPrintSuite extends BaseCompletionSuite {
 
   override def excludedScalaVersions: Set[String] =
-    Set(BuildInfoVersions.scala3)
+    BuildInfoVersions.scala3Versions.toSet
 
   def checkSignature(
       name: String,
@@ -15,7 +15,7 @@ class PrettyPrintSuite extends BaseCompletionSuite {
       expected: String,
       compat: Map[String, String] = Map.empty
   )(implicit loc: Location): Unit = {
-    val signature = original.replaceAllLiterally("@@", "")
+    val signature = original.replace("@@", "")
     val completion = original.replaceFirst("@@.*", "@@")
     val suffix = " = ${0:???}"
     val compatWithSuffix = compat.map {

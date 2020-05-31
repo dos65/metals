@@ -1,14 +1,17 @@
 package scala.meta.internal.metals
 
+import java.net.URI
+import java.nio.file.Paths
+
 import scala.collection.concurrent.TrieMap
+
 import scala.meta._
 import scala.meta.internal.io.PathIO
 import scala.meta.internal.mtags.MtagsEnrichments._
 import scala.meta.parsers.Parsed
+
 import org.eclipse.lsp4j.Diagnostic
 import org.eclipse.lsp4j.DiagnosticSeverity
-import java.nio.file.Paths
-import java.net.URI
 
 /**
  * Manages parsing of Scala source files into Scalameta syntax trees.
@@ -67,7 +70,15 @@ final class Trees {
     Option(PathIO.extension(Paths.get(fileUri))).collect {
       case "scala" => dialects.Scala
       case "sbt" => dialects.Sbt
-      case "sc" => dialects.Sbt
+      case "sc" =>
+        dialects.Scala213
+          .copy(allowToplevelTerms = true, toplevelSeparator = "")
     }
   }
+}
+
+object Trees {
+
+  implicit val defaultDialect: Dialect = scala.meta.dialects.Scala213
+
 }

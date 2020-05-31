@@ -1,12 +1,15 @@
 package tests
 
 import java.nio.file.Files
+
+import scala.concurrent.Future
+
+import scala.meta.internal.metals.Messages
+import scala.meta.internal.metals.MetalsEnrichments._
+
 import org.eclipse.lsp4j.SymbolInformation
 import org.eclipse.lsp4j.WorkspaceSymbolParams
-import scala.concurrent.Future
-import scala.meta.internal.metals.MetalsEnrichments._
-import scala.meta.internal.metals.Messages
-import MetalsTestEnrichments._
+import tests.MetalsTestEnrichments._
 
 class WorkspaceSymbolLspSuite extends BaseLspSuite("workspace-symbol") {
 
@@ -45,7 +48,7 @@ class WorkspaceSymbolLspSuite extends BaseLspSuite("workspace-symbol") {
         "a.b.PazQux"
       )
       _ <- server.didSave("a/src/main/scala/a/B.scala")(
-        _.replaceAllLiterally("class B", "  class HaddockBax")
+        _.replace("class B", "  class HaddockBax")
       )
       _ = assertNoDiff(
         server.workspaceSymbol("Had"),

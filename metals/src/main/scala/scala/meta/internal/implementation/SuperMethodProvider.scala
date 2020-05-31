@@ -1,15 +1,16 @@
 package scala.meta.internal.implementation
 
-import scala.meta.internal.semanticdb.Scala._
+import scala.collection.{mutable => m}
+
+import scala.meta.internal.metals.codelenses.SuperMethodCodeLens.LensGoSuperCache
 import scala.meta.internal.semanticdb.ClassSignature
 import scala.meta.internal.semanticdb.MethodSignature
+import scala.meta.internal.semanticdb.Scala._
 import scala.meta.internal.semanticdb.SymbolInformation
 import scala.meta.internal.semanticdb.SymbolOccurrence
 import scala.meta.internal.semanticdb.TextDocument
 import scala.meta.internal.semanticdb.TypeRef
 import scala.meta.internal.semanticdb.TypeSignature
-import scala.collection.{mutable => m}
-import scala.meta.internal.metals.codelenses.SuperMethodCodeLens.LensGoSuperCache
 
 object SuperMethodProvider {
 
@@ -197,6 +198,7 @@ object SuperMethodProvider {
         documentWithPath.textDocument,
         findSymbol
       )
+    val methodName = msi.displayName
     val result = for {
       classSymbolInformation <- classSymbolInformationOption.toIterable
       bottomClassSig = classSymbolInformation.signature
@@ -210,6 +212,7 @@ object SuperMethodProvider {
         case cs: ClassSignature => cs
       }
       methodSymbolLink <- classSig.getDeclarations.symlinks
+      if msi.isLocal || methodSymbolLink.contains(methodName)
       mSymbolInformation <- findSymbol(methodSymbolLink).toIterable
       methodSignature <- Option(mSymbolInformation.signature).collect {
         case m: MethodSignature => m

@@ -1,6 +1,10 @@
 package scala.meta.internal.metals
 
 import java.util.concurrent.CompletableFuture
+
+import scala.meta.internal.decorations.PublishDecorationsParams
+import scala.meta.internal.tvp._
+
 import org.eclipse.lsp4j.ApplyWorkspaceEditParams
 import org.eclipse.lsp4j.ApplyWorkspaceEditResponse
 import org.eclipse.lsp4j.ExecuteCommandParams
@@ -10,8 +14,6 @@ import org.eclipse.lsp4j.PublishDiagnosticsParams
 import org.eclipse.lsp4j.RegistrationParams
 import org.eclipse.lsp4j.ShowMessageRequestParams
 import org.eclipse.lsp4j.UnregistrationParams
-import scala.meta.internal.tvp._
-import scala.meta.internal.decorations.PublishDecorationsParams
 
 class DelegatingLanguageClient(var underlying: MetalsLanguageClient)
     extends MetalsLanguageClient {
@@ -36,14 +38,6 @@ class DelegatingLanguageClient(var underlying: MetalsLanguageClient)
       params: ApplyWorkspaceEditParams
   ): CompletableFuture[ApplyWorkspaceEditResponse] = {
     underlying.applyEdit(params)
-  }
-
-  def configure(capabilities: ClientExperimentalCapabilities): Unit = {
-    underlying match {
-      case client: ConfiguredLanguageClient =>
-        client.configure(capabilities)
-      case _ =>
-    }
   }
 
   override def metalsStatus(params: MetalsStatusParams): Unit = {

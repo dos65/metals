@@ -1,7 +1,7 @@
 package tests
 
-import scala.meta.internal.metals.ServerCommands
 import scala.meta.internal.metals.Messages
+import scala.meta.internal.metals.ServerCommands
 
 class BuildServerConnectionLspSuite
     extends BaseLspSuite("build-server-connection") {
@@ -27,7 +27,7 @@ class BuildServerConnectionLspSuite
       _ = assertNoDiagnostics()
       _ <- server.executeCommand(ServerCommands.ConnectBuildServer.id)
       _ <- server.didSave("a/src/main/scala/a/A.scala")(
-        _.replaceAllLiterally("val n = 42", "val n: String = 42")
+        _.replace("val n = 42", "val n: String = 42")
       )
       _ = assertNoDiff(
         client.workspaceDiagnostics,

@@ -1,16 +1,19 @@
 package scala.meta.internal.metals
 
+import java.io.ByteArrayInputStream
+import java.nio.channels.Channels
+import java.nio.channels.Pipe
+import java.nio.charset.StandardCharsets
+
 import scala.concurrent.ExecutionContextExecutorService
 import scala.concurrent.Future
 import scala.concurrent.Promise
+
 import scala.meta.io.AbsolutePath
-import bloop.launcher.LauncherMain
-import java.nio.charset.StandardCharsets
-import bloop.bloopgun.core.Shell
-import java.nio.channels.Channels
-import java.nio.channels.Pipe
-import java.io.ByteArrayInputStream
+
 import bloop.bloopgun.BloopgunCli
+import bloop.bloopgun.core.Shell
+import bloop.launcher.LauncherMain
 import org.eclipse.lsp4j.services.LanguageClient
 
 /**
@@ -29,7 +32,8 @@ final class BloopServers(
     workspace: AbsolutePath,
     client: MetalsBuildClient,
     languageClient: LanguageClient,
-    tables: Tables
+    tables: Tables,
+    config: MetalsServerConfig
 )(implicit ec: ExecutionContextExecutorService) {
 
   def shutdownServer(): Boolean = {
@@ -61,7 +65,8 @@ final class BloopServers(
         client,
         languageClient,
         () => connectToLauncher(bloopVersion),
-        tables
+        tables.dismissedNotifications.ReconnectBsp,
+        config
       )
       .map(Option(_))
   }
@@ -96,6 +101,7 @@ final class BloopServers(
         serverStarted
       )
 
+    val finished = Promise[Unit]()
     val job = ec.submit(new Runnable {
       override def run(): Unit = {
         launcher.runLauncher(
@@ -103,6 +109,7 @@ final class BloopServers(
           skipBspConnection = false,
           Nil
         )
+        finished.success(())
       }
     })
 
@@ -117,7 +124,8 @@ final class BloopServers(
             clientOut.close()
           },
           Cancelable(() => job.cancel(true))
-        )
+        ),
+        finished
       )
     }
   }

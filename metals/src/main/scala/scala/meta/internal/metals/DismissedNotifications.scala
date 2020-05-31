@@ -1,9 +1,10 @@
 package scala.meta.internal.metals
 
 import java.sql.Connection
-import JdbcEnrichments._
 import java.sql.Timestamp
 import java.util.concurrent.TimeUnit
+
+import scala.meta.internal.metals.JdbcEnrichments._
 
 final class DismissedNotifications(conn: () => Connection, time: Time) {
 
@@ -13,6 +14,10 @@ final class DismissedNotifications(conn: () => Connection, time: Time) {
   val DoctorWarning = new Notification(4)
   val IncompatibleBloop = new Notification(5)
   val ReconnectBsp = new Notification(6)
+  val CreateScalafmtFile = new Notification(7)
+  val ChangeScalafmtVersion = new Notification(8)
+  val AmmoniteImportAuto = new Notification(9)
+  val ReconnectAmmonite = new Notification(10)
 
   class Notification(val id: Int)(implicit name: sourcecode.Name) {
     override def toString: String = s"Notification(${name.value}, $id)"

@@ -2,20 +2,24 @@ package scala.meta.internal.metals
 
 import java.util.Collections
 import java.util.concurrent.ConcurrentHashMap
+import java.{util => ju}
+
+import scala.collection.concurrent.TrieMap
+import scala.concurrent.ExecutionContext
+import scala.concurrent.Promise
+import scala.util.Failure
+import scala.util.Success
+
+import scala.meta.internal.metals.MetalsEnrichments._
+import scala.meta.internal.metals.ammonite.Ammonite
+import scala.meta.internal.tvp._
+import scala.meta.internal.worksheets.WorksheetProvider
 
 import ch.epfl.scala.bsp4j._
 import ch.epfl.scala.{bsp4j => b}
 import com.google.gson.JsonObject
 import org.eclipse.lsp4j.jsonrpc.services.JsonNotification
 import org.eclipse.{lsp4j => l}
-
-import scala.collection.concurrent.TrieMap
-import scala.concurrent.ExecutionContext
-import scala.concurrent.Promise
-import scala.meta.internal.metals.MetalsEnrichments._
-import scala.meta.internal.tvp._
-import java.{util => ju}
-import scala.meta.internal.worksheets.WorksheetProvider
 
 /**
  * A build client that forwards notifications from the build server to the language client.
@@ -25,12 +29,13 @@ final class ForwardingMetalsBuildClient(
     diagnostics: Diagnostics,
     buildTargets: BuildTargets,
     buildTargetClasses: BuildTargetClasses,
-    config: MetalsServerConfig,
+    clientConfig: ClientConfiguration,
     statusBar: StatusBar,
     time: Time,
     didCompile: CompileReport => Unit,
     treeViewProvider: () => TreeViewProvider,
-    worksheetProvider: () => WorksheetProvider
+    worksheetProvider: () => WorksheetProvider,
+    ammonite: () => Ammonite
 )(implicit ec: ExecutionContext)
     extends MetalsBuildClient
     with Cancelable {
@@ -51,6 +56,14 @@ final class ForwardingMetalsBuildClient(
 
   val updatedTreeViews: ju.Set[BuildTargetIdentifier] =
     ConcurrentHashSet.empty[BuildTargetIdentifier]
+
+  def buildHasErrors(buildTargetId: BuildTargetIdentifier): Boolean = {
+    buildTargets
+      .buildTargetTransitiveDependencies(buildTargetId)
+      .exists(hasReportedError.contains(_))
+  }
+
+  override def buildHasErrors: Boolean = !hasReportedError.isEmpty()
 
   def reset(): Unit = {
     cancel()
@@ -86,7 +99,16 @@ final class ForwardingMetalsBuildClient(
   }
 
   def onBuildTargetDidChange(params: b.DidChangeBuildTarget): Unit = {
-    scribe.info(params.toString)
+    val ammoniteBuildChanged =
+      params.getChanges.asScala.exists(_.getTarget.getUri.isAmmoniteScript)
+    if (ammoniteBuildChanged)
+      ammonite().importBuild().onComplete {
+        case Success(()) =>
+        case Failure(exception) =>
+          scribe.error("Error re-importing Ammonite build", exception)
+      }
+    else
+      scribe.info(params.toString)
   }
 
   def onBuildTargetCompileReport(params: b.CompileReport): Unit = {}
@@ -141,7 +163,9 @@ final class ForwardingMetalsBuildClient(
             case None => report.getTarget.getUri
           }
           val isSuccess = report.getErrors == 0
-          val icon = if (isSuccess) config.icons.check else config.icons.alert
+          val icon =
+            if (isSuccess) clientConfig.initialConfig.icons.check
+            else clientConfig.initialConfig.icons.alert
           val message = s"${icon}Compiled $name (${compilation.timer})"
           if (!compilation.isNoOp) {
             scribe.info(s"time: compiled $name in ${compilation.timer}")

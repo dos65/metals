@@ -1,9 +1,10 @@
 package scala.meta.internal.metals
 
+import scala.meta.internal.tvp.TreeViewCompilations
+
 import ch.epfl.scala.{bsp4j => b}
 import org.eclipse.lsp4j.jsonrpc.services.JsonNotification
 import org.eclipse.{lsp4j => l}
-import scala.meta.internal.tvp.TreeViewCompilations
 
 /**
  * A BSP client interface that uses lsp4j data structures where applicable.
@@ -32,4 +33,7 @@ trait MetalsBuildClient {
 
   def ongoingCompilations(): TreeViewCompilations
 
+  def buildHasErrors(buildTargetId: b.BuildTargetIdentifier): Boolean
+
+  def buildHasErrors: Boolean
 }

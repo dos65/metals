@@ -1,22 +1,24 @@
 package scala.meta.internal.metals
 
-import ch.epfl.scala.bsp4j.ScalaBuildTarget
-import ch.epfl.scala.bsp4j.ScalacOptionsItem
 import java.net.URLClassLoader
-import java.nio.file.Paths
+import java.nio.file.Path
 import java.util.ServiceLoader
+
 import scala.collection.concurrent.TrieMap
+
 import scala.meta.internal.metals.MetalsEnrichments._
 import scala.meta.internal.pc.ScalaPresentationCompiler
+import scala.meta.internal.worksheets.MdocClassLoader
 import scala.meta.pc.PresentationCompiler
+
+import ch.epfl.scala.bsp4j.ScalaBuildTarget
+import ch.epfl.scala.bsp4j.ScalacOptionsItem
 import coursierapi.Dependency
 import coursierapi.Fetch
 import coursierapi.MavenRepository
 import coursierapi.Repository
 import coursierapi.ResolutionParams
-import scala.meta.internal.worksheets.MdocClassLoader
 import mdoc.interfaces.Mdoc
-import java.nio.file.Path
 
 /**
  * Wrapper around software that is embedded with Metals.
@@ -142,6 +144,12 @@ object Embedded {
   private def scalaDependency(scalaVersion: String): Dependency =
     Dependency.of("org.scala-lang", "scala-library", scalaVersion)
 
+  private def dottyDependency(scalaVersion: String): Dependency = {
+    val binaryVersion =
+      ScalaVersions.scalaBinaryVersionFromFullVersion(scalaVersion)
+    Dependency.of("ch.epfl.lamp", s"dotty-library_$binaryVersion", scalaVersion)
+  }
+
   private def mtagsDependency(scalaVersion: String): Dependency = Dependency.of(
     "org.scalameta",
     s"mtags_$scalaVersion",
@@ -183,6 +191,13 @@ object Embedded {
       classfiers = Seq("sources")
     )
 
+  def downloadDottySources(scalaVersion: String): List[Path] =
+    downloadDependency(
+      dottyDependency(scalaVersion),
+      scalaVersion,
+      classfiers = Seq("sources")
+    )
+
   def downloadSemanticdbScalac(scalaVersion: String): List[Path] =
     downloadDependency(semanticdbScalacDependency(scalaVersion), scalaVersion)
   def downloadMtags(scalaVersion: String): List[Path] =
@@ -202,23 +217,13 @@ object Embedded {
   ): URLClassLoader = {
     val scalaVersion = ScalaVersions
       .dropVendorSuffix(info.getScalaVersion)
-    val pc = mtagsDependency(scalaVersion)
-    val semanticdbJars = scalac.getOptions.asScala.collect {
-      case opt
-          if opt.startsWith("-Xplugin:") &&
-            opt.contains("semanticdb-scalac") &&
-            opt.contains(BuildInfo.semanticdbVersion) =>
-        Paths.get(opt.stripPrefix("-Xplugin:"))
-    }
-    val dep =
-      if (semanticdbJars.isEmpty) pc
-      else pc.withTransitive(false)
+    val dep = mtagsDependency(scalaVersion)
     val jars = fetchSettings(dep, info.getScalaVersion())
       .fetch()
       .asScala
       .map(_.toPath)
     val scalaJars = info.getJars.asScala.map(_.toAbsolutePath.toNIO)
-    val allJars = Iterator(jars, scalaJars, semanticdbJars).flatten
+    val allJars = Iterator(jars, scalaJars).flatten
     val allURLs = allJars.map(_.toUri.toURL).toArray
     // Share classloader for a subset of types.
     val parent =

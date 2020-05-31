@@ -4,13 +4,14 @@ import java.nio.charset.Charset
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.StandardOpenOption
+
 import scala.meta.io.AbsolutePath
 
 object FileLayout {
 
   def mapFromString(layout: String): Map[String, String] = {
     if (!layout.trim.isEmpty) {
-      val lines = layout.replaceAllLiterally("\r\n", "\n")
+      val lines = layout.replace("\r\n", "\n")
       lines
         .split("(?=\n/)")
         .map { row =>

@@ -3,8 +3,9 @@ package scala.meta.internal.pc
 import java.util
 import java.util.Optional
 import java.util.concurrent.TimeUnit
-import scala.meta.pc.PresentationCompilerConfig
+
 import scala.meta.internal.jdk.CollectionConverters._
+import scala.meta.pc.PresentationCompilerConfig
 import scala.meta.pc.PresentationCompilerConfig.OverrideDefFormat
 import java.{util => ju}
 
@@ -23,6 +24,7 @@ case class PresentationCompilerConfigImpl(
     isSignatureHelpDocumentationEnabled: Boolean = true,
     isCompletionSnippetsEnabled: Boolean = true,
     isCompletionItemResolve: Boolean = true,
+    isStripMarginOnTypeFormattingEnabled: Boolean = true,
     timeoutDelay: Long = 20,
     timeoutUnit: TimeUnit = TimeUnit.SECONDS,
     _autoImports: Option[Seq[String]] = None
@@ -36,4 +38,21 @@ case class PresentationCompilerConfigImpl(
     Optional.ofNullable(_completionCommand.orNull)
   override def autoImports(): Optional[ju.List[String]] =
     Optional.ofNullable(_autoImports.map(_.asJava).orNull)
+
+  def update(
+      options: CompilerInitializationOptions
+  ): PresentationCompilerConfigImpl =
+    copy(
+      isCompletionItemDetailEnabled =
+        isCompletionItemDetailEnabled || options.isCompletionItemDetailEnabled,
+      isCompletionItemDocumentationEnabled =
+        isCompletionItemDocumentationEnabled || options.isCompletionItemDocumentationEnabled,
+      isHoverDocumentationEnabled =
+        isHoverDocumentationEnabled || options.isHoverDocumentationEnabled,
+      snippetAutoIndent = snippetAutoIndent || options.snippetAutoIndent,
+      isSignatureHelpDocumentationEnabled =
+        isSignatureHelpDocumentationEnabled || options.isSignatureHelpDocumentationEnabled,
+      isCompletionItemResolve =
+        isCompletionItemResolve || options.isCompletionItemResolve
+    )
 }

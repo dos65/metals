@@ -1,6 +1,7 @@
 package scala.meta.internal.metals
 
 import scala.{meta => m}
+
 import scala.meta.internal.mtags.MtagsEnrichments._
 
 /**
@@ -9,7 +10,7 @@ import scala.meta.internal.mtags.MtagsEnrichments._
 final case class NewFileTemplate private (template: String) {
   import NewFileTemplate._
 
-  lazy val fileContent: String = template.replaceAllLiterally(cursorMarker, "")
+  lazy val fileContent: String = template.replace(cursorMarker, "")
 
   lazy val cursorPosition: m.Position = {
     val input = m.Input.String(template)

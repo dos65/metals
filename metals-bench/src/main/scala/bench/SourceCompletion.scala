@@ -1,14 +1,17 @@
 package bench
 
 import java.nio.charset.StandardCharsets
-import org.eclipse.lsp4j.CompletionList
+import java.nio.file.Paths
+
+import scala.util.Random
+
 import scala.meta.internal.io.FileIO
 import scala.meta.internal.io.InputStreamIO
 import scala.meta.internal.metals.CompilerOffsetParams
 import scala.meta.io.AbsolutePath
 import scala.meta.pc.PresentationCompiler
-import scala.util.Random
-import java.nio.file.Paths
+
+import org.eclipse.lsp4j.CompletionList
 
 /**
  * A helper to create a benchmark for completions given a source file and offset.
@@ -44,7 +47,7 @@ object SourceCompletion {
     fromPath(path, readResource(path), query)
   }
   def fromPath(path: String, text: String, query: String): SourceCompletion = {
-    val queryIndex = text.indexOf(query.replaceAllLiterally("@@", ""))
+    val queryIndex = text.indexOf(query.replace("@@", ""))
     if (queryIndex < 0) throw new IllegalArgumentException(query)
     val offset = query.indexOf("@@")
     if (offset < 0) throw new IllegalArgumentException(query)

@@ -2,13 +2,13 @@ package scala.meta.internal.builds
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.util.Properties
+
 import scala.meta.internal.metals._
 import scala.meta.io.AbsolutePath
 
 case class SbtBuildTool(
-    version: String,
-    userConfig: () => UserConfiguration,
-    config: MetalsServerConfig
+    workspaceVersion: Option[String],
+    userConfig: () => UserConfiguration
 ) extends BloopPluginBuildTool {
 
   /**
@@ -23,6 +23,7 @@ case class SbtBuildTool(
     AbsolutePath(out)
   }
 
+  override def version: String = workspaceVersion.getOrElse(recommendedVersion)
   override def args(workspace: AbsolutePath): List[String] = {
     val sbtArgs = List[String](
       "-Dbloop.export-jar-classifiers=sources",
@@ -51,15 +52,15 @@ case class SbtBuildTool(
         ).flatten
     }
     removeLegacyGlobalPlugin()
-    writeSbtMetalsPlugin(workspace, config)
-    writeSbtMetalsPlugin(workspace.resolve("project"), config)
+    writeSbtMetalsPlugin(workspace)
+    writeSbtMetalsPlugin(workspace.resolve("project"))
     allArgs
   }
 
   override def digest(workspace: AbsolutePath): Option[String] =
     SbtDigest.current(workspace)
   override val minimumVersion: String = "0.13.17"
-  override val recommendedVersion: String = "1.2.8"
+  override val recommendedVersion: String = BuildInfo.sbtVersion
 
   // We remove legacy metals.sbt file that was located in
   // global sbt plugins and which adds the plugin to each projects
@@ -80,8 +81,7 @@ case class SbtBuildTool(
   }
 
   private def writeSbtMetalsPlugin(
-      workspace: AbsolutePath,
-      config: MetalsServerConfig
+      workspace: AbsolutePath
   ): Unit = {
     if (userConfig().bloopSbtAlreadyInstalled) return
     val versionToUse = userConfig().currentBloopVersion
@@ -139,8 +139,7 @@ object SbtBuildTool {
 
   def apply(
       workspace: AbsolutePath,
-      userConfig: () => UserConfiguration,
-      config: MetalsServerConfig
+      userConfig: () => UserConfiguration
   ): SbtBuildTool = {
     val props = new Properties()
     val buildproperties =
@@ -153,7 +152,7 @@ object SbtBuildTool {
         finally in.close()
         Option(props.getProperty("sbt.version"))
       }
-    SbtBuildTool(version.getOrElse(unknown), userConfig, config)
+    SbtBuildTool(version, userConfig)
   }
 
   private def unknown = "<unknown>"

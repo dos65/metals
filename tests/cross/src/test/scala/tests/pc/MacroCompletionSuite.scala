@@ -1,9 +1,11 @@
 package tests.pc
 
-import tests.BaseCompletionSuite
-import scala.collection.Seq
-import coursierapi.Dependency
 import java.nio.file.Path
+
+import scala.collection.Seq
+
+import coursierapi.Dependency
+import tests.BaseCompletionSuite
 import tests.BuildInfoVersions
 
 class MacroCompletionSuite extends BaseCompletionSuite {
@@ -38,7 +40,7 @@ class MacroCompletionSuite extends BaseCompletionSuite {
 
   // @tgodzik macros will not work in Dotty
   override def excludedScalaVersions: Set[String] =
-    Set(BuildInfoVersions.scala3)
+    BuildInfoVersions.scala3Versions.toSet
 
   override def scalacOptions(classpath: Seq[Path]): Seq[String] =
     classpath

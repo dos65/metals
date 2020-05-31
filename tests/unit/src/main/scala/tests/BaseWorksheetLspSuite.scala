@@ -1,15 +1,16 @@
 package tests
 
-import scala.meta.internal.metals.ClientExperimentalCapabilities
-import scala.meta.internal.metals.UserConfiguration
-import scala.meta.internal.metals.MetalsSlowTaskResult
 import scala.concurrent.Promise
+
+import scala.meta.internal.metals.ClientExperimentalCapabilities
+import scala.meta.internal.metals.MetalsSlowTaskResult
+import scala.meta.internal.metals.UserConfiguration
 
 abstract class BaseWorksheetLspSuite(scalaVersion: String)
     extends BaseLspSuite("worksheet") {
   override def experimentalCapabilities
       : Option[ClientExperimentalCapabilities] =
-    Some(ClientExperimentalCapabilities(decorationProvider = true))
+    Some(ClientExperimentalCapabilities.Default.copy(decorationProvider = true))
   override def userConfig: UserConfiguration =
     super.userConfig.copy(worksheetScreenWidth = 40, worksheetCancelTimeout = 1)
 
@@ -163,10 +164,10 @@ abstract class BaseWorksheetLspSuite(scalaVersion: String)
       _ <- cancelled.future
       _ = client.slowTaskHandler = (_ => None)
       _ <- server.didSave("a/src/main/scala/Main.worksheet.sc")(
-        _.replaceAllLiterally("Stream", "// Stream")
+        _.replace("Stream", "// Stream")
       )
       _ <- server.didSave("a/src/main/scala/Main.worksheet.sc")(
-        _.replaceAllLiterally("42", "43")
+        _.replace("42", "43")
       )
       _ = assertNoDiff(
         client.workspaceDecorations,
@@ -292,7 +293,7 @@ abstract class BaseWorksheetLspSuite(scalaVersion: String)
           |""".stripMargin
       )
       _ <- server.didSave("a/src/main/scala/a/Util.scala")(
-        _.replaceAllLiterally("n + 1", "n + 2")
+        _.replace("n + 1", "n + 2")
       )
       _ <- server.didSave("a/src/main/scala/a/Main.worksheet.sc")(identity)
       _ = assertNoDiff(
@@ -324,7 +325,7 @@ abstract class BaseWorksheetLspSuite(scalaVersion: String)
            |""".stripMargin
       )
       _ <- server.didChange("a/src/main/scala/a/Main.worksheet.sc")(
-        _.replaceAllLiterally("val x", "def y = \nval x")
+        _.replace("val x", "def y = \nval x")
       )
       _ = assertNoDiff(
         client.workspaceDiagnostics,
@@ -385,10 +386,20 @@ abstract class BaseWorksheetLspSuite(scalaVersion: String)
       _ <- server.didOpen("a/src/main/scala/Main.worksheet.sc")
       _ = assertNoDiff(
         client.workspaceDiagnostics,
-        """|a/src/main/scala/Main.worksheet.sc:1:1: warning: there was one feature warning; re-run with -feature for details
-           |type Structural = {
-           |^
-           |""".stripMargin
+        getExpected(
+          """|a/src/main/scala/Main.worksheet.sc:1:1: warning: there was one feature warning; re-run with -feature for details
+             |type Structural = {
+             |^
+             |""".stripMargin,
+          compat = Map(
+            "2.13.2" ->
+              """|a/src/main/scala/Main.worksheet.sc:1:1: warning: 1 feature warning; re-run with -feature for details
+                 |type Structural = {
+                 |^
+                 |""".stripMargin
+          ),
+          scalaVersion
+        )
       )
     } yield ()
   }

@@ -1,32 +1,35 @@
 package scala.meta.internal.mtags
 
-import scala.meta.internal.pc.CompletionItemData
-import org.eclipse.lsp4j.CompletionItem
-import com.google.gson.Gson
-import com.google.gson.JsonElement
-import scala.util.control.NonFatal
-import java.util.logging.Level
-import java.util.logging.Logger
-import org.eclipse.{lsp4j => l}
-import scala.{meta => m}
-import scala.meta.internal.semanticdb.Language
-import scala.meta.io.AbsolutePath
-import scala.meta.io.RelativePath
+import java.nio.charset.StandardCharsets
+import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
 import java.util
-import scala.annotation.tailrec
-import org.eclipse.lsp4j.MarkupContent
-import geny.Generator
-import java.nio.file.Files
-import scala.meta.internal.io.FileIO
-import java.nio.charset.StandardCharsets
-import scala.meta.internal.io.PathIO
-import scala.meta.inputs.Input
-import scala.collection.AbstractIterator
+import java.util.logging.Level
+import java.util.logging.Logger
 import java.{util => ju}
+
+import scala.annotation.tailrec
+import scala.collection.AbstractIterator
+import scala.util.control.NonFatal
+import scala.{meta => m}
+
+import scala.meta.inputs.Input
+import scala.meta.internal.io.FileIO
+import scala.meta.internal.io.PathIO
+import scala.meta.internal.pc.CompletionItemData
+import scala.meta.internal.semanticdb.Language
 import scala.meta.internal.{semanticdb => s}
+import scala.meta.io.AbsolutePath
+import scala.meta.io.RelativePath
+
+import com.google.gson.Gson
+import com.google.gson.JsonElement
+import geny.Generator
+import org.eclipse.lsp4j.CompletionItem
+import org.eclipse.lsp4j.MarkupContent
 import org.eclipse.lsp4j.jsonrpc.messages.{Either => JEither}
+import org.eclipse.{lsp4j => l}
 
 trait CommonMtagsEnrichments {
 
@@ -210,7 +213,8 @@ trait CommonMtagsEnrichments {
 
   protected def filenameToLanguage(filename: String): Language = {
     if (filename.endsWith(".java")) Language.JAVA
-    else if (filename.endsWith(".scala")) Language.SCALA
+    else if (filename.endsWith(".scala") || (filename.endsWith(".sc") && !filename
+        .endsWith(".worksheet.sc"))) Language.SCALA
     else Language.UNKNOWN_LANGUAGE
   }
 
@@ -244,6 +248,8 @@ trait CommonMtagsEnrichments {
       doc.endsWith(".sc")
     def isScalaFilename: Boolean =
       doc.endsWith(".scala") || isScalaScript || isSbt
+    def isAmmoniteScript: Boolean =
+      isScalaScript && !doc.endsWith(".worksheet.sc")
     def asSymbol: Symbol = Symbol(doc)
     def endsWithAt(value: String, offset: Int): Boolean = {
       val start = offset - value.length
@@ -335,6 +341,8 @@ trait CommonMtagsEnrichments {
     def isScalaScript: Boolean = {
       filename.endsWith(".sc")
     }
+    def isAmmoniteScript: Boolean =
+      isScalaScript && !isWorksheet
     def isWorksheet: Boolean = {
       filename.endsWith(".worksheet.sc")
     }

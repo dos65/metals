@@ -1,46 +1,35 @@
 package scala.meta.internal.zipkin
+import java.nio.file.Files
 import java.util.Properties
 
-case class Property(metalsProperty: String) {
+import scala.util.Try
+
+import scala.meta.io.AbsolutePath
+
+case class Property private (metalsProperty: String) {
 
   val bloopProperty: String = metalsProperty.stripPrefix("metals.")
 
-  def value: Option[String] =
-    Property.definitions.map(_.getProperty(metalsProperty))
-
-  def updateOptions(options: List[String]): List[String] = {
-    value match {
-      case Some(newValue) =>
-        val oldValue = readValue(options)
-        if (!oldValue.contains(newValue)) {
-          val otherOptions =
-            options.filterNot(_.startsWith(s"-D$bloopProperty="))
-          val newOption = s"-D$bloopProperty=$newValue"
-          newOption :: otherOptions
-        } else {
-          options
-        }
-      case None =>
-        options
-    }
-  }
-
-  def readValue(options: List[String]): Option[String] = {
-    val regex = s"-D$bloopProperty=(.*)".r
-    options.collectFirst {
-      case regex(value) => value.stripPrefix(s"-D$bloopProperty=")
-    }
-  }
+  def value(properties: Option[Properties]): Option[String] =
+    properties.flatMap { props => Option(props.getProperty(metalsProperty)) }
 }
 object Property {
 
-  val definitions: Option[Properties] = {
-    Option(
-      getClass.getResourceAsStream("/fastpass.properties")
+  def fromFile(workspace: AbsolutePath): Option[Properties] = {
+    Try(
+      Files.newInputStream(
+        workspace.resolve("fastpass").resolve("fastpass.properties").toNIO
+      )
     ).map { in =>
       val prop = new Properties
       prop.load(in)
       prop
-    }
+    }.toOption
   }
+
+  def booleanValue(
+      prop: Property,
+      properties: Option[Properties]
+  ): Option[Boolean] =
+    prop.value(properties).flatMap(str => Try(str.toBoolean).toOption)
 }

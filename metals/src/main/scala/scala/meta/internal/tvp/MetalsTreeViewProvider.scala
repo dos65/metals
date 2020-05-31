@@ -1,19 +1,22 @@
 package scala.meta.internal.tvp
 
-import ch.epfl.scala.bsp4j.BuildTargetIdentifier
-import scala.meta.io.AbsolutePath
 import java.util.concurrent.ScheduledExecutorService
-import scala.collection.concurrent.TrieMap
 import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.TimeUnit
-import scala.meta.internal.metals._
+import java.util.concurrent.atomic.AtomicBoolean
+
+import scala.collection.concurrent.TrieMap
+
 import scala.meta.internal.metals.MetalsEnrichments._
+import scala.meta.internal.metals._
 import scala.meta.internal.mtags.GlobalSymbolIndex
 import scala.meta.internal.mtags.Mtags
-import org.eclipse.{lsp4j => l}
-import java.util.concurrent.atomic.AtomicBoolean
 import scala.meta.internal.mtags.Symbol
 import scala.meta.internal.semanticdb.Scala._
+import scala.meta.io.AbsolutePath
+
+import ch.epfl.scala.bsp4j.BuildTargetIdentifier
+import org.eclipse.{lsp4j => l}
 
 class MetalsTreeViewProvider(
     workspace: () => AbsolutePath,
@@ -36,7 +39,7 @@ class MetalsTreeViewProvider(
   )
   val libraries = new ClasspathTreeView[AbsolutePath, AbsolutePath](
     definitionIndex,
-    Build,
+    Project,
     "libraries",
     "Libraries",
     identity,
@@ -47,9 +50,10 @@ class MetalsTreeViewProvider(
     () => buildTargets.allWorkspaceJars,
     (path, symbol) => classpath.symbols(path, symbol)
   )
+
   val projects = new ClasspathTreeView[ScalaTarget, BuildTargetIdentifier](
     definitionIndex,
-    Build,
+    Project,
     "projects",
     "Projects",
     _.id,
@@ -75,18 +79,9 @@ class MetalsTreeViewProvider(
     languageClient.metalsTreeViewDidChange(
       TreeViewDidChangeParams(
         Array(
-          TreeViewNode(
-            Build,
-            null,
-            null,
-            null
-          ),
-          TreeViewNode(
-            Compile,
-            null,
-            null,
-            null
-          )
+          TreeViewNode.empty(Project),
+          TreeViewNode.empty(Build),
+          TreeViewNode.empty(Compile)
         )
       )
     )
@@ -100,7 +95,7 @@ class MetalsTreeViewProvider(
     val toUpdate = pendingProjectUpdates.asScala.iterator
       .filter { id =>
         !isCollapsed.getOrElse(id, true) &&
-        isVisible(Build)
+        isVisible(Project)
       }
       .flatMap(buildTargets.scalaTarget)
       .toArray
@@ -152,7 +147,7 @@ class MetalsTreeViewProvider(
             1,
             TimeUnit.SECONDS
           )
-        case Build =>
+        case Project =>
           flushPendingProjectUpdates()
         case _ =>
       }
@@ -166,7 +161,7 @@ class MetalsTreeViewProvider(
   ): TreeViewParentResult = {
     TreeViewParentResult(
       params.viewId match {
-        case Build =>
+        case Project =>
           val uri = params.nodeUri
           if (libraries.matches(uri)) {
             libraries.parent(uri).orNull
@@ -211,12 +206,10 @@ class MetalsTreeViewProvider(
           echoCommand(ServerCommands.BloopGithub, "github"),
           echoCommand(ServerCommands.ScalametaTwitter, "twitter")
         )
-      case Build =>
+      case Project =>
         Option(params.nodeUri) match {
           case None =>
             Array(
-              TreeViewNode.fromCommand(ServerCommands.ImportBuild),
-              TreeViewNode.fromCommand(ServerCommands.ConnectBuildServer),
               projects.root,
               libraries.root
             )
@@ -229,14 +222,27 @@ class MetalsTreeViewProvider(
               Array.empty
             }
         }
-      case Compile =>
+      case Build =>
         Option(params.nodeUri) match {
           case None =>
             Array(
-              TreeViewNode.fromCommand(ServerCommands.CascadeCompile),
-              TreeViewNode.fromCommand(ServerCommands.CancelCompile),
-              ongoingCompilationNode
+              TreeViewNode.fromCommand(ServerCommands.ImportBuild, "sync"),
+              TreeViewNode
+                .fromCommand(ServerCommands.ConnectBuildServer, "connect"),
+              TreeViewNode
+                .fromCommand(ServerCommands.CascadeCompile, "cascade"),
+              TreeViewNode.fromCommand(ServerCommands.CancelCompile, "cancel"),
+              TreeViewNode.fromCommand(ServerCommands.CleanCompile, "clean"),
+              TreeViewNode
+                .fromCommand(ServerCommands.RestartBuildServer, "debug-stop")
             )
+          case _ =>
+            Array()
+        }
+      case Compile =>
+        Option(params.nodeUri) match {
+          case None =>
+            ongoingCompilations
           case Some(uri) =>
             if (uri == ongoingCompilationNode.nodeUri) {
               ongoingCompilations
@@ -279,9 +285,9 @@ class MetalsTreeViewProvider(
       result.map { uriChain =>
         uriChain.foreach { uri =>
           // Cache results
-          children(TreeViewChildrenParams(Build, uri))
+          children(TreeViewChildrenParams(Project, uri))
         }
-        TreeViewNodeRevealResult(Build, uriChain.toArray)
+        TreeViewNodeRevealResult(Project, uriChain.toArray)
       }
     }
   }
@@ -299,18 +305,16 @@ class MetalsTreeViewProvider(
     } yield TreeViewNode(
       Compile,
       id.getUri,
-      s"${info.getDisplayName()} - ${compilation.timer.toStringSeconds} (${compilation.progressPercentage}%)"
+      s"${info.getDisplayName()} - ${compilation.timer.toStringSeconds} (${compilation.progressPercentage}%)",
+      icon = "compile"
     )
   }
 
   private def ongoingCompilationNode: TreeViewNode = {
-    val size = compilations().size
-    val counter = if (size > 0) s" ($size)" else ""
     TreeViewNode(
       Compile,
-      "metals://ongoing-compilations",
-      s"Ongoing compilations$counter",
-      collapseState = MetalsTreeItemCollapseState.collapsed
+      null,
+      Compile
     )
   }
 

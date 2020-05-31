@@ -3,17 +3,20 @@ package scala.meta.internal.metals
 import java.nio.file.Files
 import java.sql.Connection
 import java.sql.DriverManager
+
+import scala.util.control.NonFatal
+
+import scala.meta.internal.builds.Digests
+import scala.meta.internal.pc.InterruptException
+import scala.meta.io.AbsolutePath
+
 import org.flywaydb.core.Flyway
 import org.flywaydb.core.api.FlywayException
-import scala.meta.internal.builds.Digests
-import scala.meta.io.AbsolutePath
-import scala.util.control.NonFatal
-import scala.meta.internal.pc.InterruptException
 
 final class Tables(
     workspace: AbsolutePath,
     time: Time,
-    config: MetalsServerConfig
+    clientConfig: ClientConfiguration
 ) extends Cancelable {
   val jarSymbols = new JarTopLevels(() => connection)
   val digests =
@@ -24,10 +27,12 @@ final class Tables(
     new DismissedNotifications(() => connection, time)
   val buildServers =
     new ChosenBuildServers(() => connection, time)
+  val buildTool =
+    new ChosenBuildTool(() => connection)
 
   def connect(): Unit = {
     this._connection =
-      if (config.isAutoServer) tryAutoServer()
+      if (clientConfig.initialConfig.isAutoServer) tryAutoServer()
       else tryAutoServer()
   }
   def cancel(): Unit = connection.close()

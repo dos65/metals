@@ -1,41 +1,44 @@
 package scala.meta.internal.pantsbuild
 
-import bloop.config.{Config => C}
-import bloop.config.Tag
-import coursierapi.Dependency
-import coursierapi.MavenRepository
 import java.io.IOException
 import java.nio.charset.StandardCharsets
+import java.nio.file.FileSystems
 import java.nio.file.Files
 import java.nio.file.NoSuchFileException
 import java.nio.file.Path
 import java.nio.file.Paths
 import java.nio.file.StandardCopyOption
+import java.{util => ju}
+
+import scala.annotation.tailrec
 import scala.collection.mutable
 import scala.concurrent.ExecutionContext
-import scala.meta.internal.metals.MetalsEnrichments._
+import scala.sys.process.Process
+import scala.util.Failure
+import scala.util.Properties
+import scala.util.Success
+import scala.util.Try
+import scala.util.control.NonFatal
+
 import scala.meta.internal.metals.BuildInfo
+import scala.meta.internal.metals.MetalsEnrichments._
 import scala.meta.internal.metals.MetalsLogger
+import scala.meta.internal.mtags.MD5
 import scala.meta.internal.pantsbuild.commands._
 import scala.meta.internal.pc.InterruptException
 import scala.meta.internal.process.SystemProcess
 import scala.meta.io.AbsolutePath
 import scala.meta.pc.CancelToken
-import scala.sys.process.Process
-import scala.util.control.NonFatal
-import scala.util.Failure
-import scala.util.Properties
-import scala.util.Success
-import scala.util.Try
-import ujson.Value
+
+import bloop.config.Tag
+import bloop.config.{Config => C}
+import coursierapi.Dependency
+import coursierapi.MavenRepository
 import metaconfig.cli.CliApp
-import metaconfig.cli.TabCompleteCommand
 import metaconfig.cli.HelpCommand
+import metaconfig.cli.TabCompleteCommand
 import metaconfig.cli.VersionCommand
-import java.{util => ju}
-import java.nio.file.FileSystems
-import scala.annotation.tailrec
-import scala.meta.internal.mtags.MD5
+import ujson.Value
 
 object BloopPants {
   lazy val app: CliApp = CliApp(
@@ -153,10 +156,12 @@ object BloopPants {
       "--concurrent",
       s"--no-quiet",
       s"--${noSources}export-dep-as-jar-sources",
+      s"--${noSources}export-dep-as-jar-libraries-sources",
       s"--export-dep-as-jar-output-file=$outputFile",
-      s"export-dep-as-jar"
+      s"export-dep-as-jar",
+      "--respect-strict-deps"
     ) ++ args.targets
-    val shortName = "pants export-classpath export"
+    val shortName = "pants export-dep-as-jar"
     val bloopSymlink = args.workspace.resolve(".bloop")
     val bloopSymlinkTarget =
       if (Files.isSymbolicLink(bloopSymlink)) {
@@ -391,41 +396,49 @@ private class BloopPants(
       if acyclicDependency.isTargetRoot
     } yield acyclicDependency.dependencyName
 
-    val libraries: List[PantsLibrary] = for {
-      dependency <- target :: transitiveDependencies
-      libraryName <- dependency.libraries
-      // The "$ORGANIZATION:$ARTIFACT" part of Maven library coordinates.
-      module = {
-        val colon = libraryName.lastIndexOf(':')
-        if (colon < 0) libraryName
-        else libraryName.substring(0, colon)
-      }
-      // Respect "excludes" setting in Pants BUILD files to exclude library dependencies.
-      if !target.excludes.contains(module)
-      library <- export.libraries.get(libraryName)
-    } yield library
+    def libraries(extractor: PantsTarget => Seq[String]): List[PantsLibrary] =
+      for {
+        dependency <- target :: transitiveDependencies
+        libraryName <- extractor(dependency)
+        // The "$ORGANIZATION:$ARTIFACT" part of Maven library coordinates.
+        module = {
+          val colon = libraryName.lastIndexOf(':')
+          if (colon < 0) libraryName
+          else libraryName.substring(0, colon)
+        }
+        // Respect "excludes" setting in Pants BUILD files to exclude library dependencies.
+        if !target.excludes.contains(module)
+        library <- export.libraries.get(libraryName)
+      } yield library
+    val compileLibraries: List[PantsLibrary] = libraries(_.compileLibraries)
+    val runtimeLibraries: List[PantsLibrary] = libraries(_.runtimeLibraries)
 
-    val classpath = new mutable.LinkedHashSet[Path]()
-    classpath ++= (for {
-      dependency <- transitiveDependencies
-      if dependency.isTargetRoot
-      acyclicDependency = cycles.parents
-        .get(dependency.name)
-        .flatMap(export.targets.get)
-        .getOrElse(dependency)
-    } yield acyclicDependency.classesDir(bloopDir))
-    classpath ++= libraries.iterator.flatMap(library =>
-      library.nonSources.map(path => toImmutableJar(library, path))
-    )
-    classpath ++= allScalaJars
-    if (target.targetType.isTest) {
-      classpath ++= testingFrameworkJars
+    def classpath(libraries: List[PantsLibrary]): List[Path] = {
+      val classpathEntries = new mutable.LinkedHashSet[Path]()
+      classpathEntries ++= (for {
+        dependency <- transitiveDependencies
+        if dependency.isTargetRoot
+        acyclicDependency = cycles.parents
+          .get(dependency.name)
+          .flatMap(export.targets.get)
+          .getOrElse(dependency)
+      } yield acyclicDependency.classesDir(bloopDir))
+      classpathEntries ++= libraries.iterator.flatMap(library =>
+        library.nonSources.map(path => toImmutableJar(library, path))
+      )
+      classpathEntries ++= allScalaJars
+      if (target.targetType.isTest) {
+        classpathEntries ++= testingFrameworkJars
+      }
+      classpathEntries.toList
     }
+    val compileClasspath = classpath(compileLibraries)
+    val runtimeClasspath = classpath(runtimeLibraries)
 
     val resolution = Some(
       C.Resolution(
         (for {
-          library <- libraries.iterator
+          library <- compileLibraries.iterator ++ runtimeLibraries.iterator
           source <- library.sources
           // NOTE(olafur): avoid sending the same *-sources.jar to reduce the
           // size of the Bloop JSON configs. Both IntelliJ and Metals only need each
@@ -467,7 +480,7 @@ private class BloopPants(
       sourcesGlobs = sourcesGlobs,
       sourceRoots = Some(sourceRoots),
       dependencies = dependencies,
-      classpath = classpath.toList,
+      classpath = compileClasspath,
       out = out,
       classesDir = classesDir,
       resources = resources,
@@ -483,6 +496,8 @@ private class BloopPants(
               s"-Duser.dir=$workspace"
             ) ++ extraJvmOptions
           ),
+          None,
+          Some(runtimeClasspath),
           None
         )
       ),
