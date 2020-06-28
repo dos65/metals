@@ -56,7 +56,6 @@ case class SbtBuildTool(
     }
     removeLegacyGlobalPlugin()
     writeSbtMetalsPlugin(workspace)
-    writeSbtMetalsPlugin(workspace.resolve("project"))
     allArgs
   }
 
@@ -86,12 +85,41 @@ case class SbtBuildTool(
   private def writeSbtMetalsPlugin(
       workspace: AbsolutePath
   ): Unit = {
+
+    def sbtMetaDirs(
+        dir: AbsolutePath,
+        acc: List[AbsolutePath]
+    ): List[AbsolutePath] = {
+      val projectDir = dir.resolve("project")
+      if (Files.exists(projectDir.toNIO)) {
+        val toCreate = projectDir.resolve("project")
+        sbtMetaDirs(projectDir, toCreate :: acc)
+      } else
+        acc
+    }
+
+    // by default create the following directory structure
+    //  workspace/
+    //     project/
+    //       metals.sbt
+    //       project/
+    //          metals.sbt
+    // and check if there are more inner meta projects
+    val mainMeta = workspace.resolve("project")
+    val metaMeta = mainMeta.resolve("project")
+    val dirs = sbtMetaDirs(metaMeta, List(mainMeta, metaMeta))
+
+    dirs.foreach(writeSbtMetalsPlugin0)
+  }
+
+  private def writeSbtMetalsPlugin0(
+      projectDir: AbsolutePath
+  ): Unit = {
     if (userConfig().bloopSbtAlreadyInstalled) return
     val versionToUse = userConfig().currentBloopVersion
     val bytes = SbtBuildTool
       .sbtPlugin(versionToUse)
       .getBytes(StandardCharsets.UTF_8)
-    val projectDir = workspace.resolve("project")
     projectDir.toFile.mkdir()
     val metalsPluginFile = projectDir.resolve("metals.sbt")
     val pluginFileShouldChange = !metalsPluginFile.isFile ||

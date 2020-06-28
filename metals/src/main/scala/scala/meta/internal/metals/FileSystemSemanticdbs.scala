@@ -10,6 +10,7 @@ import scala.meta.internal.mtags.Semanticdbs.FoundSemanticDbPath
 import scala.meta.internal.mtags.TextDocumentLookup
 import scala.meta.io.AbsolutePath
 import scala.meta.io.RelativePath
+import java.net.URI
 
 /**
  * Reads SemanticDBs from disk that are produces by the semanticdb-scalac compiler plugin.
@@ -17,26 +18,36 @@ import scala.meta.io.RelativePath
 final class FileSystemSemanticdbs(
     buildTargets: BuildTargets,
     charset: Charset,
-    workspace: AbsolutePath,
+    mainWorkspace: AbsolutePath,
     fingerprints: Md5Fingerprints
 ) extends Semanticdbs {
 
   override def textDocument(file: AbsolutePath): TextDocumentLookup = {
     if (
       !file.toLanguage.isScala ||
-      file.toNIO.getFileSystem != workspace.toNIO.getFileSystem
+      file.toNIO.getFileSystem != mainWorkspace.toNIO.getFileSystem
     ) {
       TextDocumentLookup.NotFound(file)
     } else {
-      semanticdbTargetroot(file) match {
-        case Some(targetroot) =>
+
+      val paths = for {
+        buildTarget <- buildTargets.inverseSources(file)
+        info <- buildTargets.info(buildTarget)
+        scalacOptions <- buildTargets.scalacOptions(buildTarget)
+      } yield {
+        val baseDir = URI.create(info.getBaseDirectory()).getPath()
+        (AbsolutePath(baseDir), scalacOptions.targetroot)
+      }
+
+      paths match {
+        case Some((ws, targetroot)) =>
           Semanticdbs.loadTextDocument(
             file,
-            workspace,
+            ws,
             charset,
             fingerprints,
             semanticdbRelativePath =>
-              findSemanticDb(semanticdbRelativePath, targetroot, file)
+              findSemanticDb(semanticdbRelativePath, targetroot, file, ws)
           )
         case None =>
           TextDocumentLookup.NotFound(file)
@@ -47,7 +58,8 @@ final class FileSystemSemanticdbs(
   private def findSemanticDb(
       semanticdbRelativePath: RelativePath,
       targetroot: AbsolutePath,
-      file: AbsolutePath
+      file: AbsolutePath,
+      workspace: AbsolutePath
   ): Option[FoundSemanticDbPath] = {
     val semanticdbpath = targetroot.resolve(semanticdbRelativePath)
     if (semanticdbpath.isFile) Some(FoundSemanticDbPath(semanticdbpath, None))
@@ -73,15 +85,4 @@ final class FileSystemSemanticdbs(
 
   }
 
-  /**
-   * Returns the directory containing SemanticDB files for this Scala source file.
-   */
-  private def semanticdbTargetroot(
-      scalaPath: AbsolutePath
-  ): Option[AbsolutePath] = {
-    for {
-      buildTarget <- buildTargets.inverseSources(scalaPath)
-      scalacOptions <- buildTargets.scalacOptions(buildTarget)
-    } yield scalacOptions.targetroot
-  }
 }

@@ -25,7 +25,7 @@ import io.github.soc.directories.ProjectDirectories
  * See https://github.com/scalacenter/bsp/blob/master/docs/bsp.md#bsp-connection-protocol
  */
 final class BspServers(
-    workspace: AbsolutePath,
+    mainWorkspace: AbsolutePath,
     charset: Charset,
     client: MetalsLanguageClient,
     buildClient: MetalsBuildClient,
@@ -34,10 +34,12 @@ final class BspServers(
     config: MetalsServerConfig
 )(implicit ec: ExecutionContextExecutorService) {
 
-  def newServer(): Future[Option[BuildServerConnection]] = {
-    findServer().flatMap { details =>
+  def newServer(
+      workspace: AbsolutePath
+  ): Future[Option[BuildServerConnection]] = {
+    findServer(workspace).flatMap { details =>
       details
-        .map(d => newServer(d).map(Option(_)))
+        .map(d => newServer(workspace, d).map(Option(_)))
         .getOrElse(Future.successful(None))
     }
   }
@@ -46,7 +48,7 @@ final class BspServers(
    * Runs "Switch build server" command, returns true if build server was changed
    */
   def switchBuildServer(): Future[Boolean] = {
-    findAvailableServers() match {
+    findAvailableServers(mainWorkspace) match {
       case Nil =>
         client.showMessage(BspSwitch.noInstalledServer)
         Future.successful(false)
@@ -60,6 +62,7 @@ final class BspServers(
   }
 
   private def newServer(
+      workspace: AbsolutePath,
       details: BspConnectionDetails
   ): Future[BuildServerConnection] = {
 
@@ -107,8 +110,10 @@ final class BspServers(
     )
   }
 
-  private def findServer(): Future[Option[BspConnectionDetails]] = {
-    findAvailableServers() match {
+  private def findServer(
+      workspace: AbsolutePath
+  ): Future[Option[BspConnectionDetails]] = {
+    findAvailableServers(workspace) match {
       case Nil =>
         Future.successful(None)
       case head :: Nil =>
@@ -131,8 +136,10 @@ final class BspServers(
     }
   }
 
-  private def findAvailableServers(): List[BspConnectionDetails] = {
-    val jsonFiles = findJsonFiles()
+  private def findAvailableServers(
+      workspace: AbsolutePath
+  ): List[BspConnectionDetails] = {
+    val jsonFiles = findJsonFiles(workspace)
     val gson = new Gson()
     for {
       candidate <- jsonFiles
@@ -151,7 +158,7 @@ final class BspServers(
     }
   }
 
-  private def findJsonFiles(): List[AbsolutePath] = {
+  private def findJsonFiles(workspace: AbsolutePath): List[AbsolutePath] = {
     val buf = List.newBuilder[AbsolutePath]
     def visit(dir: AbsolutePath): Unit =
       dir.list.foreach { p =>

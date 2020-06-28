@@ -46,7 +46,7 @@ import org.eclipse.lsp4j.MessageType
 
 class DebugProvider(
     definitionProvider: DefinitionProvider,
-    buildServer: => Option[BuildServerConnection],
+    buildServer: () => Option[BuildServerConnection],
     buildTargets: BuildTargets,
     buildTargetClasses: BuildTargetClasses,
     compilations: Compilations,
@@ -78,7 +78,7 @@ class DebugProvider(
       val jvmOptionsTranslatedParams = translateJvmParams(parameters)
       // long timeout, since server might take a while to compile the project
       val connectToServer = () => {
-        buildServer
+        buildServer()
           .map(_.startDebugSession(jvmOptionsTranslatedParams))
           .getOrElse(BuildServerUnavailableError)
           .withTimeout(60, TimeUnit.SECONDS)

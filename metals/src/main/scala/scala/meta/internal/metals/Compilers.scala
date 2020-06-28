@@ -26,7 +26,6 @@ import scala.meta.pc.SymbolSearch
 
 import ch.epfl.scala.bsp4j.BuildTargetIdentifier
 import ch.epfl.scala.bsp4j.CompileReport
-import ch.epfl.scala.bsp4j.ScalaBuildTarget
 import ch.epfl.scala.bsp4j.ScalacOptionsItem
 import org.eclipse.lsp4j.CompletionItem
 import org.eclipse.lsp4j.CompletionList
@@ -101,11 +100,12 @@ class Compilers(
       Try(StandaloneSymbolSearch(workspace, buffers))
         .getOrElse(EmptySymbolSearch)
     val compiler =
-      configure(new ScalaPresentationCompiler(), standaloneSearch).newInstance(
-        s"$name-${mtags.BuildInfo.scalaCompilerVersion}",
-        classpath.asJava,
-        Nil.asJava
-      )
+      configure(new ScalaPresentationCompiler(), standaloneSearch, None)
+        .newInstance(
+          s"$name-${mtags.BuildInfo.scalaCompilerVersion}",
+          classpath.asJava,
+          Nil.asJava
+        )
     ramboCancelable = Cancelable(() => compiler.shutdown())
     compiler
   }
@@ -359,6 +359,8 @@ class Compilers(
     }
 
     if (path.isWorksheet) loadWorksheetCompiler(path).orElse(fromBuildTarget)
+    else if (path.isSbt)
+      buildTargets.sbtBuildScalaTarget.flatMap(loadCompilerForTarget)
     else fromBuildTarget
   }
 
@@ -375,11 +377,12 @@ class Compilers(
   ): Unit = {
     val created: Option[Unit] = for {
       targetId <- buildTargets.inverseSources(path)
-      info <- buildTargets.scalaTarget(targetId)
-      isSupported = ScalaVersions.isSupportedScalaVersion(info.scalaVersion)
+      scalaTarget <- buildTargets.scalaTarget(targetId)
+      isSupported =
+        ScalaVersions.isSupportedScalaVersion(scalaTarget.scalaVersion)
       _ = {
         if (!isSupported) {
-          scribe.warn(s"unsupported Scala ${info.scalaVersion}")
+          scribe.warn(s"unsupported Scala ${scalaTarget.scalaVersion}")
         }
       }
       if isSupported
@@ -397,7 +400,7 @@ class Compilers(
             buffers,
             workspaceFallback = Some(search)
           )
-          newCompiler(scalac, info.scalaInfo, classpath, worksheetSearch)
+          newCompiler(scalac, scalaTarget, classpath, worksheetSearch)
         }
       )
     }
@@ -412,28 +415,29 @@ class Compilers(
 
   def loadCompiler(
       target: BuildTargetIdentifier
+  ): Option[PresentationCompiler] =
+    buildTargets.scalaTarget(target).flatMap(loadCompilerForTarget)
+
+  def loadCompilerForTarget(
+      scalaTarget: ScalaTarget
   ): Option[PresentationCompiler] = {
-    for {
-      info <- buildTargets.scalaTarget(target)
-      isSupported = ScalaVersions.isSupportedScalaVersion(info.scalaVersion)
-      _ = {
-        if (!isSupported) {
-          scribe.warn(s"unsupported Scala ${info.scalaVersion}")
-        }
-      }
-      if isSupported
-      scalac <- buildTargets.scalacOptions(target)
-    } yield {
-      jcache.computeIfAbsent(
-        target,
+    val isSupported =
+      ScalaVersions.isSupportedScalaVersion(scalaTarget.scalaVersion)
+    if (!isSupported) {
+      scribe.warn(s"unsupported Scala ${scalaTarget.scalaVersion}")
+      None
+    } else {
+      val out = jcache.computeIfAbsent(
+        scalaTarget.info.getId,
         { _ =>
           statusBar.trackBlockingTask(
             s"${config.icons.sync}Loading presentation compiler"
           ) {
-            newCompiler(scalac, info.scalaInfo, search)
+            newCompiler(scalaTarget.scalac, scalaTarget, search)
           }
         }
       )
+      Some(out)
     }
   }
 
@@ -482,7 +486,8 @@ class Compilers(
 
   private def configure(
       pc: PresentationCompiler,
-      search: SymbolSearch
+      search: SymbolSearch,
+      scalaTarget: Option[ScalaTarget]
   ): PresentationCompiler =
     pc.withSearch(search)
       .withExecutorService(ec)
@@ -501,22 +506,23 @@ class Compilers(
               initializeParams.supportsCompletionSnippets,
             isFoldOnlyLines = initializeParams.foldOnlyLines,
             isStripMarginOnTypeFormattingEnabled =
-              userConfig().enableStripMarginOnTypeFormatting
+              userConfig().enableStripMarginOnTypeFormatting,
+            _autoImports = scalaTarget.flatMap(_.autoImports)
           )
       )
 
   def newCompiler(
       scalac: ScalacOptionsItem,
-      info: ScalaBuildTarget,
+      target: ScalaTarget,
       search: SymbolSearch
   ): PresentationCompiler = {
     val classpath = scalac.classpath.map(_.toNIO).toSeq
-    newCompiler(scalac, info, classpath, search)
+    newCompiler(scalac, target, classpath, search)
   }
 
   def newCompiler(
       scalac: ScalacOptionsItem,
-      info: ScalaBuildTarget,
+      target: ScalaTarget,
       classpath: Seq[Path],
       search: SymbolSearch
   ): PresentationCompiler = {
@@ -525,13 +531,17 @@ class Compilers(
     // `info.getScalaVersion == mtags.BuildInfo.scalaCompilerVersion` then we
     // skip fetching the mtags module from Maven.
     val pc: PresentationCompiler =
-      if (ScalaVersions.isCurrentScalaCompilerVersion(info.getScalaVersion())) {
+      if (
+        ScalaVersions.isCurrentScalaCompilerVersion(
+          target.scalaInfo.getScalaVersion()
+        )
+      ) {
         new ScalaPresentationCompiler()
       } else {
-        embedded.presentationCompiler(info, scalac)
+        embedded.presentationCompiler(target.scalaInfo, scalac)
       }
     val options = plugins.filterSupportedOptions(scalac.getOptions.asScala)
-    configure(pc, search).newInstance(
+    configure(pc, search, Some(target)).newInstance(
       scalac.getTarget.getUri,
       classpath.asJava,
       (log ++ options).asJava
