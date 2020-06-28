@@ -136,18 +136,38 @@ abstract class BasePCSuite extends BaseSuite {
 
   override def munitTestTransforms: List[TestTransform] =
     super.munitTestTransforms ++ List(
-      new TestTransform("Append Scala version", { test =>
-        test.withName(test.name + "_" + scalaVersion)
-      }),
-      new TestTransform("Ignore Scala version", { test =>
-        val isIgnoredScalaVersion = test.tags.collect {
-          case IgnoreScalaVersion(versions) => versions
-        }.flatten
+      new TestTransform(
+        "Append Scala version",
+        { test =>
+          test.withName(test.name + "_" + scalaVersion)
+        }
+      ),
+      new TestTransform(
+        "Ignore Scala version",
+        { test =>
+          val isIgnoredScalaVersion = test.tags.collect {
+            case IgnoreScalaVersion(versions) => versions
+          }.flatten
 
-        if (isIgnoredScalaVersion(scalaVersion))
-          test.withTags(test.tags + munit.Ignore)
-        else test
-      })
+          if (isIgnoredScalaVersion(scalaVersion))
+            test.withTags(test.tags + munit.Ignore)
+          else test
+        }
+      ),
+      new TestTransform(
+        "Run for Scala version",
+        { test =>
+          test.tags
+            .collectFirst {
+              case RunForScalaVersion(versions) =>
+                if (versions(scalaVersion))
+                  test
+                else test.withTags(test.tags + munit.Ignore)
+            }
+            .getOrElse(test)
+
+        }
+      )
     )
 
   def params(code: String, filename: String = "test.scala"): (String, Int) = {
@@ -190,6 +210,18 @@ abstract class BasePCSuite extends BaseSuite {
 
     def apply(version: String): IgnoreScalaVersion = {
       IgnoreScalaVersion(Set(version))
+    }
+  }
+
+  case class RunForScalaVersion(versions: Set[String])
+      extends Tag("RunScalaVersion")
+
+  object RunForScalaVersion {
+    def apply(versions: Seq[String]): RunForScalaVersion =
+      RunForScalaVersion(versions.toSet)
+
+    def apply(version: String): RunForScalaVersion = {
+      RunForScalaVersion(Set(version))
     }
   }
 }

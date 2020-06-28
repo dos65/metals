@@ -158,6 +158,12 @@ public abstract class PresentationCompiler {
     public abstract PresentationCompiler withConfiguration(PresentationCompilerConfig config);
 
     /**
+     * Provide workspace root for features like ammonite script $file completions.
+     */
+    public abstract PresentationCompiler withWorkspace(Path workspace);
+
+
+    /**
      * Construct a new presentation compiler with the given parameters.
      *
      * @param buildTargetIdentifier the build target containing this source file. This is needed for
@@ -201,4 +207,8 @@ public abstract class PresentationCompiler {
      */
     public abstract boolean isLoaded();
 
+    /**
+     * Returns enclosing class or object for a cursor position
+     */
+    public abstract CompletableFuture<Optional<String>> enclosingClass(OffsetParams params);
 }

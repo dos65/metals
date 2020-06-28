@@ -26,11 +26,15 @@ import scala.concurrent.duration._
 import scala.util.Success
 import scala.util.control.NonFatal
 
+import scala.meta.internal.builds.BloopInstall
 import scala.meta.internal.builds.BuildTool
 import scala.meta.internal.builds.BuildTools
+import scala.meta.internal.builds.NewProjectProvider
+import scala.meta.internal.builds.ShellRunner
 import scala.meta.internal.implementation.ImplementationProvider
 import scala.meta.internal.implementation.Supermethods
 import scala.meta.internal.io.FileIO
+import scala.meta.internal.metals.Messages.AmmoniteJvmParametersChange
 import scala.meta.internal.metals.Messages.IncompatibleBloopVersion
 import scala.meta.internal.metals.MetalsEnrichments._
 import scala.meta.internal.metals.ammonite.Ammonite
@@ -173,12 +177,14 @@ class MetalsLanguageServer(
   )
 
   // These can't be instantiated until we know the workspace root directory.
+  private var shellRunner: ShellRunner = _
   private var bloopInstall: BloopInstall = _
   private var diagnostics: Diagnostics = _
   private var warnings: Warnings = _
   private var fileSystemSemanticdbs: FileSystemSemanticdbs = _
   private var interactiveSemanticdbs: InteractiveSemanticdbs = _
   private var buildTools: BuildTools = _
+  private var newProjectProvider: NewProjectProvider = _
   private var semanticdbs: Semanticdbs = _
   private var buildClient: ForwardingMetalsBuildClient = _
   private var bloopServers: BloopServers = _
@@ -312,18 +318,25 @@ class MetalsLanguageServer(
       () => worksheetProvider,
       () => ammonite
     )
-    bloopInstall = register(
-      new BloopInstall(
-        workspace,
-        languageClient,
-        sh,
-        buildTools,
-        time,
-        tables,
-        embedded,
-        statusBar,
-        () => userConfig
-      )
+    shellRunner = register(
+      new ShellRunner(languageClient, () => userConfig, time, statusBar)
+    )
+    bloopInstall = new BloopInstall(
+      workspace,
+      languageClient,
+      buildTools,
+      tables,
+      shellRunner
+    )
+    newProjectProvider = new NewProjectProvider(
+      buildTools,
+      languageClient,
+      statusBar,
+      clientConfig,
+      time,
+      shellRunner,
+      initialConfig.icons,
+      workspace
     )
     bloopServers = new BloopServers(
       workspace,
@@ -378,16 +391,6 @@ class MetalsLanguageServer(
       languageClient,
       packageProvider,
       () => focusedDocument
-    )
-    debugProvider = new DebugProvider(
-      definitionProvider,
-      buildServer,
-      buildTargets,
-      buildTargetClasses,
-      compilations,
-      languageClient,
-      buildClient,
-      statusBar
     )
     referencesProvider = new ReferenceProvider(
       workspace,
@@ -476,6 +479,17 @@ class MetalsLanguageServer(
         diagnostics
       )
     )
+    debugProvider = new DebugProvider(
+      definitionProvider,
+      buildServer,
+      buildTargets,
+      buildTargetClasses,
+      compilations,
+      languageClient,
+      buildClient,
+      statusBar,
+      compilers
+    )
     codeActionProvider = new CodeActionProvider(
       compilers,
       buffers
@@ -503,7 +517,8 @@ class MetalsLanguageServer(
         statusBar,
         diagnostics,
         embedded,
-        worksheetPublisher
+        worksheetPublisher,
+        compilers
       )
     )
     ammonite = register(
@@ -601,7 +616,13 @@ class MetalsLanguageServer(
       } else {
         capabilities.setCodeActionProvider(true)
       }
-      capabilities.setTextDocumentSync(TextDocumentSyncKind.Full)
+
+      val textDocumentSyncOptions = new TextDocumentSyncOptions
+      textDocumentSyncOptions.setChange(TextDocumentSyncKind.Full)
+      textDocumentSyncOptions.setSave(new SaveOptions(true))
+      textDocumentSyncOptions.setOpenClose(true)
+
+      capabilities.setTextDocumentSync(textDocumentSyncOptions)
 
       val serverInfo = new ServerInfo("Metals", BuildInfo.metalsVersion)
       new InitializeResult(capabilities, serverInfo)
@@ -659,7 +680,7 @@ class MetalsLanguageServer(
         clientConfig.initialConfig.icons,
         time,
         sh,
-        clientConfig.initialConfig
+        clientConfig
       )
       render = () => newClient.renderHtml
       completeCommand = e => newClient.completeCommand(e)
@@ -936,8 +957,24 @@ class MetalsLanguageServer(
                 case _ =>
                   Future.successful(())
               }
-          } else if (userConfig.pantsTargets != old.pantsTargets) {
-            slowConnectToBuildServer(forceImport = false).ignoreValue
+          } else if (
+            userConfig.ammoniteJvmProperties != old.ammoniteJvmProperties && buildTargets.allBuildTargetIds
+              .exists(Ammonite.isAmmBuildTarget)
+          ) {
+            languageClient
+              .showMessageRequest(AmmoniteJvmParametersChange.params())
+              .asScala
+              .flatMap {
+                case item if item == AmmoniteJvmParametersChange.restart =>
+                  ammonite
+                    .stop()
+                    .asScala
+                    .flatMap { _ =>
+                      ammonite.start()
+                    }
+                case _ =>
+                  Future.successful(())
+              }
           } else {
             Future.successful(())
           }
@@ -1331,7 +1368,10 @@ class MetalsLanguageServer(
             new ExecuteCommandParams(
               ClientCommands.GotoLocation.id,
               List(
-                new Location(log.toURI.toString(), new l.Range(pos, pos)): Object
+                new Location(
+                  log.toURI.toString(),
+                  new l.Range(pos, pos)
+                ): Object
               ).asJava
             )
           )
@@ -1387,13 +1427,12 @@ class MetalsLanguageServer(
             name.getAsString()
         }
         newFilesProvider.createNewFileDialog(directoryURI, name).asJavaObject
-
       case ServerCommands.StartAmmoniteBuildServer() =>
         ammonite.start().asJavaObject
-
       case ServerCommands.StopAmmoniteBuildServer() =>
         ammonite.stop()
-
+      case ServerCommands.NewScalaProject() =>
+        newProjectProvider.createNewProjectFromTemplate().asJavaObject
       case cmd =>
         scribe.error(s"Unknown command '$cmd'")
         Future.successful(()).asJavaObject
@@ -1591,18 +1630,17 @@ class MetalsLanguageServer(
         }
       } yield result
     }.recover {
-        case NonFatal(e) =>
-          disconnectOldBuildServer()
-          val message =
-            "Failed to connect with build server, no functionality will work."
-          val details = " See logs for more details."
-          languageClient.showMessage(
-            new MessageParams(MessageType.Error, message + details)
-          )
-          scribe.error(message, e)
-          BuildChange.Failed
-      }
-      .flatMap(compileAllOpenFiles)
+      case NonFatal(e) =>
+        disconnectOldBuildServer()
+        val message =
+          "Failed to connect with build server, no functionality will work."
+        val details = " See logs for more details."
+        languageClient.showMessage(
+          new MessageParams(MessageType.Error, message + details)
+        )
+        scribe.error(message, e)
+        BuildChange.Failed
+    }.flatMap(compileAllOpenFiles)
   }
 
   private def disconnectOldBuildServer(): Future[Unit] = {
@@ -1680,31 +1718,35 @@ class MetalsLanguageServer(
 
     try {
       val sourceToIndex0 = sourceToIndex(source, targetOpt)
-      val reluri = source.toIdeallyRelativeURI(sourceItem)
-      val input = sourceToIndex0.toInput
-      val symbols = ArrayBuffer.empty[WorkspaceSymbolInformation]
-      SemanticdbDefinition.foreach(input) {
-        case SemanticdbDefinition(info, occ, owner) =>
-          if (WorkspaceSymbolProvider.isRelevantKind(info.kind)) {
-            occ.range.foreach { range =>
-              symbols += WorkspaceSymbolInformation(
-                info.symbol,
-                info.kind,
-                range.toLSP
-              )
+      if (sourceToIndex0.exists) {
+        val reluri = source.toIdeallyRelativeURI(sourceItem)
+        val input = sourceToIndex0.toInput
+        val symbols = ArrayBuffer.empty[WorkspaceSymbolInformation]
+        SemanticdbDefinition.foreach(input) {
+          case SemanticdbDefinition(info, occ, owner) =>
+            if (WorkspaceSymbolProvider.isRelevantKind(info.kind)) {
+              occ.range.foreach { range =>
+                symbols += WorkspaceSymbolInformation(
+                  info.symbol,
+                  info.kind,
+                  range.toLSP
+                )
+              }
             }
-          }
-          if (sourceItem.isDefined &&
-            !info.symbol.isPackage &&
-            (owner.isPackage || source.isAmmoniteScript)) {
-            definitionIndex.addToplevelSymbol(reluri, source, info.symbol)
-          }
-      }
-      workspaceSymbols.didChange(source, symbols)
+            if (
+              sourceItem.isDefined &&
+              !info.symbol.isPackage &&
+              (owner.isPackage || source.isAmmoniteScript)
+            ) {
+              definitionIndex.addToplevelSymbol(reluri, source, info.symbol)
+            }
+        }
+        workspaceSymbols.didChange(source, symbols)
 
-      // Since the `symbols` here are toplevel symbols,
-      // we cannot use `symbols` for expiring the cache for all symbols in the source.
-      symbolDocs.expireSymbolDefinition(sourceToIndex0)
+        // Since the `symbols` here are toplevel symbols,
+        // we cannot use `symbols` for expiring the cache for all symbols in the source.
+        symbolDocs.expireSymbolDefinition(sourceToIndex0)
+      }
     } catch {
       case NonFatal(e) =>
         scribe.error(source.toString(), e)
@@ -1727,7 +1769,9 @@ class MetalsLanguageServer(
   )(thunk: => T): T = {
     val elapsed = new Timer(time)
     val result = thunk
-    if (onlyIf && (thresholdMillis == 0 || elapsed.elapsedMillis > thresholdMillis)) {
+    if (
+      onlyIf && (thresholdMillis == 0 || elapsed.elapsedMillis > thresholdMillis)
+    ) {
       scribe.info(s"time: $didWhat in $elapsed")
     }
     result
@@ -1814,7 +1858,7 @@ class MetalsLanguageServer(
         item <- i.sources.getItems.asScala
         source <- item.getSources.asScala
       } {
-        val sourceItemPath = source.getUri.toAbsolutePath
+        val sourceItemPath = source.getUri.toAbsolutePath(followSymlink = false)
         buildTargets.addSourceItem(sourceItemPath, item.getTarget)
       }
       check()
@@ -1826,7 +1870,14 @@ class MetalsLanguageServer(
       "started file watcher",
       clientConfig.initialConfig.statistics.isIndex
     ) {
-      fileWatcher.restart()
+      try {
+        fileWatcher.restart()
+      } catch {
+        // note(@tgodzik) This is needed in case of ammonite
+        // where it can rarely deletes directories while we are trying to watch them
+        case NonFatal(e) =>
+          scribe.warn("File watching failed, indexes will not be updated.", e)
+      }
     }
     timedThunk(
       "indexed library classpath",
@@ -1862,7 +1913,7 @@ class MetalsLanguageServer(
     val targets = buildTargets.all.map(_.id).toSeq
     buildTargetClasses
       .rebuildIndex(targets)
-      .foreach(_ => languageClient.refreshModel())
+      .foreach(_ => languageClient.refreshModel(buildChanged = true))
   }
 
   private def checkRunningBloopVersion(bspServerVersion: String) = {
@@ -2128,12 +2179,15 @@ object MetalsLanguageServer {
     for {
       workspaceBuildTargets <- build.workspaceBuildTargets()
       ids = workspaceBuildTargets.getTargets.map(_.getId)
-      scalacOptions <- build
-        .buildTargetScalacOptions(new b.ScalacOptionsParams(ids))
-      sources <- build
-        .buildTargetSources(new b.SourcesParams(ids))
-      dependencySources <- build
-        .buildTargetDependencySources(new b.DependencySourcesParams(ids))
+      scalacOptions <-
+        build
+          .buildTargetScalacOptions(new b.ScalacOptionsParams(ids))
+      sources <-
+        build
+          .buildTargetSources(new b.SourcesParams(ids))
+      dependencySources <-
+        build
+          .buildTargetDependencySources(new b.DependencySourcesParams(ids))
     } yield {
       ImportedBuild(
         workspaceBuildTargets,

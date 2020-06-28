@@ -1,7 +1,6 @@
 package scala.meta.internal.metals
 
-import ch.epfl.scala.bsp4j.BuildTargetIdentifier
-import ch.epfl.scala.bsp4j.CompileReport
+import java.nio.file.Path
 import java.nio.file.Paths
 import java.util.Collections
 import java.util.concurrent.ScheduledExecutorService
@@ -27,6 +26,8 @@ import scala.meta.pc.SymbolSearch
 
 import ch.epfl.scala.bsp4j.BuildTargetIdentifier
 import ch.epfl.scala.bsp4j.CompileReport
+import ch.epfl.scala.bsp4j.ScalaBuildTarget
+import ch.epfl.scala.bsp4j.ScalacOptionsItem
 import org.eclipse.lsp4j.CompletionItem
 import org.eclipse.lsp4j.CompletionList
 import org.eclipse.lsp4j.CompletionParams
@@ -74,20 +75,35 @@ class Compilers(
     Collections.synchronizedMap(
       new java.util.HashMap[BuildTargetIdentifier, PresentationCompiler]
     )
+  private val jworksheetsCache: ju.Map[AbsolutePath, PresentationCompiler] =
+    Collections.synchronizedMap(
+      new java.util.HashMap[AbsolutePath, PresentationCompiler]
+    )
+
   private val cache = jcache.asScala
 
+  private val worksheetsCache = jworksheetsCache.asScala
+
   // The "rambo" compiler is used for source files that don't belong to a build target.
-  lazy val ramboCompiler: PresentationCompiler = {
+  lazy val ramboCompiler: PresentationCompiler = createStandaloneCompiler(
+    PackageIndex.scalaLibrary,
+    "metals-default"
+  )
+
+  def createStandaloneCompiler(
+      classpath: Seq[Path],
+      name: String
+  ): PresentationCompiler = {
     scribe.info(
       "no build target: using presentation compiler with only scala-library"
     )
-    val ramboSearch =
-      Try(new RamboSymbolSearch(workspace, buffers))
+    val standaloneSearch =
+      Try(StandaloneSymbolSearch(workspace, buffers))
         .getOrElse(EmptySymbolSearch)
     val compiler =
-      configure(new ScalaPresentationCompiler(), ramboSearch).newInstance(
-        s"metals-default-${mtags.BuildInfo.scalaCompilerVersion}",
-        PackageIndex.scalaLibrary.asJava,
+      configure(new ScalaPresentationCompiler(), standaloneSearch).newInstance(
+        s"$name-${mtags.BuildInfo.scalaCompilerVersion}",
+        classpath.asJava,
         Nil.asJava
       )
     ramboCancelable = Cancelable(() => compiler.shutdown())
@@ -114,9 +130,12 @@ class Compilers(
     if (Testing.isEnabled) Future.successful(())
     else {
       Future {
-        paths.foreach { path =>
-          findTarget(path, None).foreach { t =>
-            loadCompiler(t).hover(
+        val targets = paths
+          .flatMap(path => buildTargets.inverseSources(path).toList)
+          .distinct
+        targets.foreach { target =>
+          loadCompiler(target).foreach { pc =>
+            pc.hover(
               CompilerOffsetParams(
                 Paths.get("Main.scala").toUri(),
                 "object Ma\n",
@@ -136,16 +155,15 @@ class Compilers(
     val pc = loadCompiler(path, None).getOrElse(ramboCompiler)
     val input = path.toInputFromBuffers(buffers)
     pc.foldingRange(
-        CompilerVirtualFileParams(path.toNIO.toUri, input.value)
-      )
-      .asScala
+      CompilerVirtualFileParams(path.toNIO.toUri, input.value)
+    ).asScala
   }
 
   def onTypeFormatting(
       params: DocumentOnTypeFormattingParams
   ): Future[ju.List[TextEdit]] = {
     val path = params.getTextDocument.getUri.toAbsolutePath
-    val pc = loadCompiler(path).getOrElse(ramboCompiler)
+    val pc = loadCompiler(path, None).getOrElse(ramboCompiler)
     val input = path.toInputFromBuffers(buffers)
     pc.onTypeFormatting(params, input.value).asScala
   }
@@ -154,7 +172,7 @@ class Compilers(
       params: DocumentRangeFormattingParams
   ): Future[ju.List[TextEdit]] = {
     val path = params.getTextDocument.getUri.toAbsolutePath
-    val pc = loadCompiler(path).getOrElse(ramboCompiler)
+    val pc = loadCompiler(path, None).getOrElse(ramboCompiler)
     val input = path.toInputFromBuffers(buffers)
     pc.rangeFormatting(params, input.value).asScala
   }
@@ -163,26 +181,26 @@ class Compilers(
       params: DocumentSymbolParams
   ): Future[ju.List[DocumentSymbol]] = {
     val path = params.getTextDocument.getUri.toAbsolutePath
-    val pc = loadCompiler(path).getOrElse(ramboCompiler)
+    val pc = loadCompiler(path, None).getOrElse(ramboCompiler)
     val input = path.toInputFromBuffers(buffers)
     pc.documentSymbols(
-        CompilerVirtualFileParams(path.toNIO.toUri, input.value)
-      )
-      .asScala
+      CompilerVirtualFileParams(path.toNIO.toUri, input.value)
+    ).asScala
   }
 
   def didClose(path: AbsolutePath): Unit = {
-    val pc = loadCompiler(path).getOrElse(ramboCompiler)
+    val pc = loadCompiler(path, None).getOrElse(ramboCompiler)
     pc.didClose(path.toNIO.toUri())
   }
 
   def didChange(path: AbsolutePath): Future[Unit] = {
-    val pc = loadCompiler(path).getOrElse(ramboCompiler)
+    val pc = loadCompiler(path, None).getOrElse(ramboCompiler)
     val input = path.toInputFromBuffers(buffers)
     for {
-      ds <- pc
-        .didChange(CompilerVirtualFileParams(path.toNIO.toUri(), input.value))
-        .asScala
+      ds <-
+        pc
+          .didChange(CompilerVirtualFileParams(path.toNIO.toUri(), input.value))
+          .asScala
     } yield {
       ds.asScala.headOption match {
         case None =>
@@ -308,11 +326,89 @@ class Compilers(
       pc.signatureHelp(CompilerOffsetParams.fromPos(pos, token)).asScala
     }.getOrElse(Future.successful(new SignatureHelp()))
 
+  def enclosingClass(
+      pos: LspPosition,
+      path: AbsolutePath,
+      token: CancelToken = EmptyCancelToken
+  ): Future[Option[String]] = {
+    val input = path.toInputFromBuffers(buffers)
+    val offset = pos.toMeta(input).start
+    val params = CompilerOffsetParams(path.toURI, input.text, offset, token)
+    loadCompiler(path, None) match {
+      case Some(pc) =>
+        pc.enclosingClass(params).asScala.map(_.asScala)
+      case None => Future.successful(None)
+    }
+  }
+
   def loadCompiler(
       path: AbsolutePath,
-      interactiveSemanticdbs: Option[InteractiveSemanticdbs] = None
-  ): Option[PresentationCompiler] =
-    findTarget(path, interactiveSemanticdbs).map(t => loadCompiler(t))
+      interactiveSemanticdbs: Option[InteractiveSemanticdbs]
+  ): Option[PresentationCompiler] = {
+
+    def fromBuildTarget: Option[PresentationCompiler] = {
+      val target = buildTargets
+        .inverseSources(path)
+        .orElse(interactiveSemanticdbs.flatMap(_.getBuildTarget(path)))
+      target match {
+        case None =>
+          if (path.isScalaFilename) Some(ramboCompiler)
+          else None
+        case Some(value) => loadCompiler(value)
+      }
+    }
+
+    if (path.isWorksheet) loadWorksheetCompiler(path).orElse(fromBuildTarget)
+    else fromBuildTarget
+  }
+
+  def loadWorksheetCompiler(
+      path: AbsolutePath
+  ): Option[PresentationCompiler] = {
+    worksheetsCache.get(path)
+  }
+
+  def restartWorksheetPresentationCompiler(
+      path: AbsolutePath,
+      classpath: List[Path],
+      sources: List[Path]
+  ): Unit = {
+    val created: Option[Unit] = for {
+      targetId <- buildTargets.inverseSources(path)
+      info <- buildTargets.scalaTarget(targetId)
+      isSupported = ScalaVersions.isSupportedScalaVersion(info.scalaVersion)
+      _ = {
+        if (!isSupported) {
+          scribe.warn(s"unsupported Scala ${info.scalaVersion}")
+        }
+      }
+      if isSupported
+      scalac <- buildTargets.scalacOptions(targetId)
+    } yield {
+      jworksheetsCache.put(
+        path,
+        statusBar.trackBlockingTask(
+          s"${config.icons.sync}Loading worksheet presentation compiler"
+        ) {
+          val worksheetSearch = new StandaloneSymbolSearch(
+            workspace,
+            classpath.map(AbsolutePath(_)),
+            sources.map(AbsolutePath(_)),
+            buffers,
+            workspaceFallback = Some(search)
+          )
+          newCompiler(scalac, info.scalaInfo, classpath, worksheetSearch)
+        }
+      )
+    }
+
+    created.getOrElse {
+      jworksheetsCache.put(
+        path,
+        createStandaloneCompiler(classpath, path.toString())
+      )
+    }
+  }
 
   def loadCompiler(
       target: BuildTargetIdentifier
@@ -326,29 +422,20 @@ class Compilers(
         }
       }
       if isSupported
+      scalac <- buildTargets.scalacOptions(target)
     } yield {
       jcache.computeIfAbsent(
-        target, { _ =>
+        target,
+        { _ =>
           statusBar.trackBlockingTask(
             s"${config.icons.sync}Loading presentation compiler"
           ) {
-            newCompiler(info)
+            newCompiler(scalac, info.scalaInfo, search)
           }
         }
       )
     }
   }
-
-  private def loadCompiler(st: ScalaTarget): PresentationCompiler =
-    jcache.computeIfAbsent(
-      st.info.getId, { _ =>
-        statusBar.trackBlockingTask(
-          s"${config.icons.sync}Loading presentation compiler"
-        ) {
-          newCompiler(st)
-        }
-      }
-    )
 
   private def ammoniteInputPosOpt(
       path: AbsolutePath,
@@ -357,9 +444,10 @@ class Compilers(
   ): Option[(Input.VirtualFile, LspPosition)] =
     if (path.isAmmoniteScript)
       for {
-        target <- buildTargets
-          .inverseSources(path)
-          .orElse(interactiveSemanticdbs.flatMap(_.getBuildTarget(path)))
+        target <-
+          buildTargets
+            .inverseSources(path)
+            .orElse(interactiveSemanticdbs.flatMap(_.getBuildTarget(path)))
         res <- ammonite().generatedScalaInputForPc(
           target,
           path,
@@ -373,23 +461,8 @@ class Compilers(
       params: TextDocumentPositionParams,
       interactiveSemanticdbs: Option[InteractiveSemanticdbs]
   )(fn: (PresentationCompiler, Position) => T): Option[T] = {
-
-    def isSupported(st: ScalaTarget): Boolean =
-      ScalaVersions.isSupportedScalaVersion(st.scalaVersion)
-
     val path = params.getTextDocument.getUri.toAbsolutePath
-
-    val maybeCompiler = findTarget(path, interactiveSemanticdbs) match {
-      case None if path.isScalaFilename => Some(ramboCompiler)
-      case Some(scalaTarget) if isSupported(scalaTarget) =>
-        Some(loadCompiler(scalaTarget))
-      case Some(v) =>
-        scribe.warn(s"unsupported Scala ${v.scalaVersion}")
-        None
-      case None => None
-    }
-
-    maybeCompiler.map(compiler => {
+    loadCompiler(path, interactiveSemanticdbs).map { compiler =>
       def defaultInputPos = {
         val input = path
           .toInputFromBuffers(buffers)
@@ -402,42 +475,18 @@ class Compilers(
         ammoniteInputPosOpt(path, params.getPosition, interactiveSemanticdbs)
           .getOrElse(defaultInputPos)
       val pos = paramsPos.toMeta(input)
+
       fn(compiler, pos)
-    })
-  }
-
-  private def defaultInputPos(
-      params: TextDocumentPositionParams,
-      path: AbsolutePath
-  ): (Input.VirtualFile, meta.Position) = {
-    val input = path
-      .toInputFromBuffers(buffers)
-      .copy(path = params.getTextDocument.getUri())
-    val pos = params.getPosition.toMeta(input)
-    (input, pos)
-  }
-
-  private def findTarget(
-      path: AbsolutePath,
-      interactiveSemanticdbs: Option[InteractiveSemanticdbs]
-  ): Option[ScalaTarget] = {
-    if (path.isSbt) {
-      buildTargets.sbtBuildScalaTarget
-    } else {
-      buildTargets
-        .inverseSources(path)
-        .orElse(interactiveSemanticdbs.flatMap(_.getBuildTarget(path)))
-        .flatMap(id => buildTargets.scalaTarget(id))
     }
   }
 
   private def configure(
       pc: PresentationCompiler,
-      search: SymbolSearch,
-      autoImports: Option[Seq[String]] = None
+      search: SymbolSearch
   ): PresentationCompiler =
     pc.withSearch(search)
       .withExecutorService(ec)
+      .withWorkspace(workspace.toNIO)
       .withScheduledExecutorService(sh)
       .withConfiguration(
         initializeParams
@@ -452,15 +501,25 @@ class Compilers(
               initializeParams.supportsCompletionSnippets,
             isFoldOnlyLines = initializeParams.foldOnlyLines,
             isStripMarginOnTypeFormattingEnabled =
-              userConfig().enableStripMarginOnTypeFormatting,
-            _autoImports = autoImports
+              userConfig().enableStripMarginOnTypeFormatting
           )
       )
 
-  def newCompiler(scalaTarget: ScalaTarget): PresentationCompiler = {
-    val scalac = scalaTarget.scalac
-    val info = scalaTarget.scalaInfo
+  def newCompiler(
+      scalac: ScalacOptionsItem,
+      info: ScalaBuildTarget,
+      search: SymbolSearch
+  ): PresentationCompiler = {
     val classpath = scalac.classpath.map(_.toNIO).toSeq
+    newCompiler(scalac, info, classpath, search)
+  }
+
+  def newCompiler(
+      scalac: ScalacOptionsItem,
+      info: ScalaBuildTarget,
+      classpath: Seq[Path],
+      search: SymbolSearch
+  ): PresentationCompiler = {
     // The metals_2.12 artifact depends on mtags_2.12.x where "x" matches
     // `mtags.BuildInfo.scalaCompilerVersion`. In the case when
     // `info.getScalaVersion == mtags.BuildInfo.scalaCompilerVersion` then we
@@ -472,7 +531,7 @@ class Compilers(
         embedded.presentationCompiler(info, scalac)
       }
     val options = plugins.filterSupportedOptions(scalac.getOptions.asScala)
-    configure(pc, search, scalaTarget.autoImports).newInstance(
+    configure(pc, search).newInstance(
       scalac.getTarget.getUri,
       classpath.asJava,
       (log ++ options).asJava

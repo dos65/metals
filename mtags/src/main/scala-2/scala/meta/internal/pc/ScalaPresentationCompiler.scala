@@ -19,6 +19,7 @@ import scala.tools.nsc.Settings
 import scala.tools.nsc.reporters.StoreReporter
 
 import scala.meta.internal.jdk.CollectionConverters._
+import scala.meta.internal.metals.ClassFinder
 import scala.meta.internal.metals.DocumentSymbolProvider
 import scala.meta.internal.metals.EmptyCancelToken
 import scala.meta.internal.metals.FoldingRangeProvider
@@ -51,7 +52,8 @@ case class ScalaPresentationCompiler(
     search: SymbolSearch = EmptySymbolSearch,
     ec: ExecutionContextExecutor = ExecutionContext.global,
     sh: Option[ScheduledExecutorService] = None,
-    config: PresentationCompilerConfig = PresentationCompilerConfigImpl()
+    config: PresentationCompilerConfig = PresentationCompilerConfigImpl(),
+    workspace: Option[Path] = None
 ) extends PresentationCompiler {
   implicit val executionContext: ExecutionContextExecutor = ec
 
@@ -74,6 +76,9 @@ case class ScalaPresentationCompiler(
 
   override def withSearch(search: SymbolSearch): PresentationCompiler =
     copy(search = search)
+
+  override def withWorkspace(workspace: Path): PresentationCompiler =
+    copy(workspace = Some(workspace))
 
   override def withExecutorService(
       executorService: ExecutorService
@@ -216,11 +221,12 @@ case class ScalaPresentationCompiler(
   override def completionItemResolve(
       item: CompletionItem,
       symbol: String
-  ): CompletableFuture[CompletionItem] = CompletableFuture.completedFuture {
-    compilerAccess.withSharedCompiler(item) { pc =>
-      new CompletionItemResolver(pc.compiler).resolve(item, symbol)
+  ): CompletableFuture[CompletionItem] =
+    CompletableFuture.completedFuture {
+      compilerAccess.withSharedCompiler(item) { pc =>
+        new CompletionItemResolver(pc.compiler).resolve(item, symbol)
+      }
     }
-  }
 
   override def signatureHelp(
       params: OffsetParams
@@ -276,8 +282,10 @@ case class ScalaPresentationCompiler(
     settings.outputDirs.setSingleOutput(vd)
     settings.classpath.value = classpath
     settings.YpresentationAnyThread.value = true
-    if (!BuildInfo.scalaCompilerVersion.startsWith("2.11") &&
-      BuildInfo.scalaCompilerVersion != "2.12.4") {
+    if (
+      !BuildInfo.scalaCompilerVersion.startsWith("2.11") &&
+      BuildInfo.scalaCompilerVersion != "2.12.4"
+    ) {
       settings.processArguments(
         List("-Ycache-plugin-class-loader:last-modified"),
         processAll = true
@@ -296,7 +304,8 @@ case class ScalaPresentationCompiler(
       new StoreReporter,
       search,
       buildTargetIdentifier,
-      config
+      config,
+      workspace
     )
   }
 
@@ -324,4 +333,15 @@ case class ScalaPresentationCompiler(
       .asJava
   }
 
+  override def enclosingClass(
+      params: OffsetParams
+  ): CompletableFuture[Optional[String]] = {
+    CompletableFuture.completedFuture(
+      trees
+        .get(params.uri(), params.text())
+        .map(tree => ClassFinder.findClassForOffset(tree, params))
+        .map(Optional.of(_))
+        .getOrElse(Optional.empty())
+    )
+  }
 }

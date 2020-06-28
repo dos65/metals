@@ -30,12 +30,12 @@ import scala.meta.internal.io.FileIO
 import scala.meta.internal.io.PathIO
 import scala.meta.internal.metals.Buffers
 import scala.meta.internal.metals.ClientCommands
-import scala.meta.internal.metals.ClientExperimentalCapabilities
 import scala.meta.internal.metals.Debug
 import scala.meta.internal.metals.DebugSession
 import scala.meta.internal.metals.DebugUnresolvedMainClassParams
 import scala.meta.internal.metals.DidFocusResult
 import scala.meta.internal.metals.Directories
+import scala.meta.internal.metals.InitializationOptions
 import scala.meta.internal.metals.MetalsEnrichments._
 import scala.meta.internal.metals.MetalsLanguageServer
 import scala.meta.internal.metals.MetalsServerConfig
@@ -119,7 +119,7 @@ final class TestingServer(
     bspGlobalDirectories: List[AbsolutePath],
     sh: ScheduledExecutorService,
     time: Time,
-    experimentalCapabilities: Option[ClientExperimentalCapabilities]
+    initializationOptions: Option[InitializationOptions]
 )(implicit ex: ExecutionContextExecutorService) {
   import scala.meta.internal.metals.JsonParser._
   val server = new MetalsLanguageServer(
@@ -174,9 +174,10 @@ final class TestingServer(
     for {
       sourceItem <- server.buildTargets.sourceItems.toSeq
       if sourceItem.exists
-      source <- if (sourceItem.isScalaOrJava)
-        Seq(sourceItem)
-      else FileIO.listAllFilesRecursively(sourceItem)
+      source <-
+        if (sourceItem.isScalaOrJava)
+          Seq(sourceItem)
+        else FileIO.listAllFilesRecursively(sourceItem)
     } yield source
   }
 
@@ -185,14 +186,16 @@ final class TestingServer(
       case Some(build) =>
         for {
           workspaceBuildTargets <- build.workspaceBuildTargets()
-          ids = workspaceBuildTargets.getTargets
-            .map(_.getId)
-            .asScala
-            .filter(_.getUri().contains(s"?id=$buildTarget"))
-          dependencySources <- build
-            .buildTargetDependencySources(
-              new b.DependencySourcesParams(ids.asJava)
-            )
+          ids =
+            workspaceBuildTargets.getTargets
+              .map(_.getId)
+              .asScala
+              .filter(_.getUri().contains(s"?id=$buildTarget"))
+          dependencySources <-
+            build
+              .buildTargetDependencySources(
+                new b.DependencySourcesParams(ids.asJava)
+              )
         } yield {
           dependencySources
             .getItems()
@@ -297,8 +300,8 @@ final class TestingServer(
     }
   }
 
-  def assertReferenceDefinitionBijection()(
-      implicit loc: munit.Location
+  def assertReferenceDefinitionBijection()(implicit
+      loc: munit.Location
   ): Unit = {
     val compare = workspaceReferences()
     assert(compare.definition.nonEmpty)
@@ -388,8 +391,8 @@ final class TestingServer(
     val workspaceCapabilities = new WorkspaceClientCapabilities()
     val textDocumentCapabilities = new TextDocumentClientCapabilities
     textDocumentCapabilities.setFoldingRange(new FoldingRangeCapabilities)
-    val experimental = experimentalCapabilities.getOrElse(
-      ClientExperimentalCapabilities.Default.copy(
+    val initOptions = initializationOptions.getOrElse(
+      InitializationOptions.Default.copy(
         debuggingProvider = true,
         treeViewProvider = true,
         slowTaskProvider = true
@@ -399,7 +402,7 @@ final class TestingServer(
       new ClientCapabilities(
         workspaceCapabilities,
         textDocumentCapabilities,
-        experimental.toJson
+        initOptions.toJson
       )
     )
     params.setWorkspaceFolders(
@@ -449,6 +452,7 @@ final class TestingServer(
 
     executeCommand(ServerCommands.StartDebugAdapter.id, params).collect {
       case DebugSession(_, uri) =>
+        scribe.info(s"Starting debug session for $uri")
         TestDebugger(URI.create(uri), stoppageHandler)
     }
   }
@@ -457,10 +461,10 @@ final class TestingServer(
   // https://stackoverflow.com/questions/2225737/error-jdwp-unable-to-get-jni-1-2-environment
   private def assertSystemExit(parameter: AnyRef) = {
     def check() = {
-      val workspaceScalaFiles =
-        workspace.listRecursive.filter(_.isScala).toList
+      val workspaceFiles =
+        workspace.listRecursive.filter(_.isScalaOrJava).toList
       val usesSystemExit =
-        workspaceScalaFiles.exists(_.text.contains("System.exit(0)"))
+        workspaceFiles.exists(_.text.contains("System.exit(0)"))
       if (!usesSystemExit)
         throw new RuntimeException(
           "All debug test for main classes should have `System.exit(0)`"
@@ -594,8 +598,8 @@ final class TestingServer(
     } yield TextEdits.applyEdits(textContents(filename), textEdits)
   }
 
-  def assertFolded(filename: String, expected: String)(
-      implicit loc: munit.Location
+  def assertFolded(filename: String, expected: String)(implicit
+      loc: munit.Location
   ): Future[Unit] =
     for {
       folded <- foldingRange(filename)
@@ -695,9 +699,10 @@ final class TestingServer(
     }
 
     for {
-      _ <- server
-        .didFocus(uri)
-        .asScala // model is refreshed only for focused document
+      _ <-
+        server
+          .didFocus(uri)
+          .asScala // model is refreshed only for focused document
       _ = client.refreshModelHandler = handler
       // first compilation, to trigger the handler
       _ <- server.compilations.compileFile(path)
@@ -713,6 +718,7 @@ final class TestingServer(
   ): String = {
     val items =
       completion.getItems.asScala
+        .sortBy(_.getLabel())
         .map(item => server.completionItemResolve(item).get())
     items.iterator
       .filter(item => filter(item.getLabel()))
@@ -994,11 +1000,12 @@ final class TestingServer(
       _ = renameParams.setNewName(newName)
       _ = renameParams.setPosition(params.getPosition())
       _ = renameParams.setTextDocument(params.getTextDocument())
-      renames <- if (prepare != null) {
-        server.rename(renameParams).asScala
-      } else {
-        Future.successful(new WorkspaceEdit)
-      }
+      renames <-
+        if (prepare != null) {
+          server.rename(renameParams).asScala
+        } else {
+          Future.successful(new WorkspaceEdit)
+        }
       // save current file to simulate user saving in the editor
       _ <- didSave(filename)(identity)
     } yield {
@@ -1245,9 +1252,9 @@ final class TestingServer(
   }
 
   def buildTarget(displayName: String): String = {
-    server.buildTargets.all
-      .find(_.displayName == displayName)
-      .map(_.id.getUri())
+    server.buildTargets
+      .findByDisplayName(displayName)
+      .map(_.getId().getUri())
       .getOrElse {
         val alternatives =
           server.buildTargets.all.map(_.displayName).mkString(" ")

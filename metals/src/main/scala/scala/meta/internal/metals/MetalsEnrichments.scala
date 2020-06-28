@@ -132,11 +132,12 @@ object MetalsEnrichments
         onPosition: m.Position => B,
         onUnchanged: () => B,
         onNoMatch: () => B
-    ): B = result match {
-      case Right(pos) => onPosition(pos)
-      case Left(EmptyResult.Unchanged) => onUnchanged()
-      case Left(EmptyResult.NoMatch) => onNoMatch()
-    }
+    ): B =
+      result match {
+        case Right(pos) => onPosition(pos)
+        case Left(EmptyResult.Unchanged) => onUnchanged()
+        case Left(EmptyResult.NoMatch) => onNoMatch()
+      }
   }
 
   implicit class XtensionJavaFuture[T](future: CompletionStage[T]) {
@@ -173,8 +174,8 @@ object MetalsEnrichments
       }
     }
 
-    def withTimeout(length: Int, unit: TimeUnit)(
-        implicit ec: ExecutionContext
+    def withTimeout(length: Int, unit: TimeUnit)(implicit
+        ec: ExecutionContext
     ): Future[A] = {
       Future(Await.result(future, FiniteDuration(length, unit)))
     }
@@ -190,8 +191,8 @@ object MetalsEnrichments
       }
     }
 
-    def liftOption(
-        implicit ec: ExecutionContext
+    def liftOption(implicit
+        ec: ExecutionContext
     ): Future[Option[A]] = future.map(Some(_))
   }
 
@@ -386,7 +387,8 @@ object MetalsEnrichments
 
   implicit class XtensionString(value: String) {
 
-    /** Returns true if this is a Scala.js or Scala Native target
+    /**
+     * Returns true if this is a Scala.js or Scala Native target
      *
      * FIXME: https://github.com/scalacenter/bloop/issues/700
      */
@@ -437,10 +439,16 @@ object MetalsEnrichments
 
     def toAbsolutePathSafe: Option[AbsolutePath] = Try(toAbsolutePath).toOption
 
-    def toAbsolutePath: AbsolutePath =
-      AbsolutePath(
+    def toAbsolutePath: AbsolutePath = toAbsolutePath(followSymlink = true)
+    def toAbsolutePath(followSymlink: Boolean): AbsolutePath = {
+      val path = AbsolutePath(
         Paths.get(URI.create(value.stripPrefix("metals:")))
-      ).dealias
+      )
+      if (followSymlink)
+        path.dealias
+      else
+        path
+    }
 
     def indexToLspPosition(index: Int): l.Position = {
       var i = 0
@@ -485,7 +493,9 @@ object MetalsEnrichments
 
   implicit class XtensionTextDocumentSemanticdb(textDocument: s.TextDocument) {
 
-    /** Returns true if the symbol is defined in this document */
+    /**
+     * Returns true if the symbol is defined in this document
+     */
     def definesSymbol(symbol: String): Boolean = {
       textDocument.occurrences.exists { localOccurrence =>
         localOccurrence.role.isDefinition &&
@@ -598,7 +608,9 @@ object MetalsEnrichments
       !item.getOptions.asScala.exists(_.isNonJVMPlatformOption)
     }
 
-    /** Returns the value of a -P:semanticdb:$option:$value compiler flag. */
+    /**
+     * Returns the value of a -P:semanticdb:$option:$value compiler flag.
+     */
     def semanticdbFlag(name: String): Option[String] = {
       val flag = s"-P:semanticdb:$name:"
       item.getOptions.asScala
@@ -669,6 +681,13 @@ object MetalsEnrichments
     )(implicit ec: ExecutionContext): Future[Option[B]] =
       state.flatMap(
         _.fold(Future.successful(Option.empty[B]))(f(_).liftOption)
+      )
+
+    def mapOptionInside[B](
+        f: A => B
+    )(implicit ec: ExecutionContext): Future[Option[B]] =
+      state.map(
+        _.map(f)
       )
   }
 

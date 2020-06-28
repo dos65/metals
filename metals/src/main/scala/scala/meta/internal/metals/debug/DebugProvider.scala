@@ -22,6 +22,7 @@ import scala.meta.internal.metals.BuildTargets
 import scala.meta.internal.metals.ClassNotFoundInBuildTargetException
 import scala.meta.internal.metals.ClientCommands
 import scala.meta.internal.metals.Compilations
+import scala.meta.internal.metals.Compilers
 import scala.meta.internal.metals.DebugUnresolvedMainClassParams
 import scala.meta.internal.metals.DebugUnresolvedTestClassParams
 import scala.meta.internal.metals.DefinitionProvider
@@ -51,7 +52,8 @@ class DebugProvider(
     compilations: Compilations,
     languageClient: MetalsLanguageClient,
     buildClient: MetalsBuildClient,
-    statusBar: StatusBar
+    statusBar: StatusBar,
+    compilers: Compilers
 ) {
 
   lazy val buildTargetClassesFinder = new BuildTargetClassesFinder(
@@ -66,11 +68,12 @@ class DebugProvider(
       val proxyServer = new ServerSocket(0)
       val host = InetAddresses.toUriString(proxyServer.getInetAddress)
       val port = proxyServer.getLocalPort
+      proxyServer.setSoTimeout(10 * 1000)
       val uri = URI.create(s"tcp://$host:$port")
       val connectedToServer = Promise[Unit]()
 
       val awaitClient =
-        () => Future(proxyServer.accept()).withTimeout(10, TimeUnit.SECONDS)
+        () => Future(proxyServer.accept())
 
       val jvmOptionsTranslatedParams = translateJvmParams(parameters)
       // long timeout, since server might take a while to compile the project
@@ -84,6 +87,11 @@ class DebugProvider(
             connectedToServer.trySuccess(())
             socket
           }
+          .recover {
+            case exception =>
+              connectedToServer.tryFailure(exception)
+              throw exception
+          }
       }
 
       val proxyFactory = { () =>
@@ -96,7 +104,13 @@ class DebugProvider(
           targets.toList
         )
         DebugProxy
-          .open(sessionName, sourcePathProvider, awaitClient, connectToServer)
+          .open(
+            sessionName,
+            sourcePathProvider,
+            awaitClient,
+            connectToServer,
+            compilers
+          )
       }
       val server = new DebugServer(sessionName, uri, proxyFactory)
 

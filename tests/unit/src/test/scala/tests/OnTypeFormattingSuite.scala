@@ -12,6 +12,7 @@ class OnTypeFormattingSuite extends BaseLspSuite("onTypeFormatting") {
   // Ensures that entering a newline at the beginning of a file doesn't
   // throw an exception
   // https://github.com/scalameta/metals/issues/1469
+
   check(
     "top-of-file",
     s"""|@@
@@ -394,6 +395,19 @@ class OnTypeFormattingSuite extends BaseLspSuite("onTypeFormatting") {
   )
 
   check(
+    "dont-add-stripMargin",
+    s"""
+       |object Main {
+       |  val str = s'''|@@'''.stripMargin
+       |}""".stripMargin,
+    s"""
+       |object Main {
+       |  val str = s'''|
+       |                |'''.stripMargin
+       |}""".stripMargin
+  )
+
+  check(
     "add-stripMargin-with-config",
     s"""
        |object Main {
@@ -445,14 +459,15 @@ class OnTypeFormattingSuite extends BaseLspSuite("onTypeFormatting") {
              |/a/src/main/scala/a/Main.scala
       """.stripMargin + base
         )
-        _ <- if (!stripMarginEnabled)
-          server.didChangeConfiguration(
-            """{
-              |  "enable-strip-margin-on-type-formatting": false
-              |}
-              |""".stripMargin
-          )
-        else Future.successful(())
+        _ <-
+          if (!stripMarginEnabled)
+            server.didChangeConfiguration(
+              """{
+                |  "enable-strip-margin-on-type-formatting": false
+                |}
+                |""".stripMargin
+            )
+          else Future.successful(())
         _ <- server.didOpen("a/src/main/scala/a/Main.scala")
         _ <- server.onTypeFormatting(
           "a/src/main/scala/a/Main.scala",

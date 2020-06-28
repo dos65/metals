@@ -220,6 +220,14 @@ object ServerCommands {
     "[string], where the string is a directory location for the new file."
   )
 
+  val NewScalaProject = new Command(
+    "new-scala-project",
+    "New Scala Project",
+    """|Create a new Scala project using one of the available g8 templates. 
+       |This includes simple projects as well as samples for most of the popular Scala frameworks.
+       |""".stripMargin
+  )
+
   /**
    * Open the browser at the given url.
    */
@@ -292,23 +300,25 @@ object ServerCommands {
     "Something"
   )
 
-  def all: List[Command] = List(
-    ImportBuild,
-    RestartBuildServer,
-    ConnectBuildServer,
-    ScanWorkspaceSources,
-    RunDoctor,
-    CascadeCompile,
-    CancelCompile,
-    BspSwitch,
-    StartDebugAdapter,
-    GotoLocation,
-    NewScalaFile,
-    GotoSuperMethod,
-    SuperMethodHierarchy,
-    StartAmmoniteBuildServer,
-    StopAmmoniteBuildServer
-  )
+  def all: List[Command] =
+    List(
+      ImportBuild,
+      RestartBuildServer,
+      ConnectBuildServer,
+      ScanWorkspaceSources,
+      RunDoctor,
+      CascadeCompile,
+      CancelCompile,
+      BspSwitch,
+      StartDebugAdapter,
+      GotoLocation,
+      NewScalaFile,
+      NewScalaProject,
+      GotoSuperMethod,
+      SuperMethodHierarchy,
+      StartAmmoniteBuildServer,
+      StopAmmoniteBuildServer
+    )
 }
 
 case class DebugUnresolvedMainClassParams(

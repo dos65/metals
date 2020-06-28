@@ -65,7 +65,15 @@ final class TestDebugger(
       .map { response =>
         // the breakpoint notification we receive does not contain the source
         // hence we have to register breakpoints here
-        response.getBreakpoints.foreach(this.breakpoints.register)
+        response.getBreakpoints.foreach { brPoint =>
+          // note(@tgodzik) from time to time breakpoints are sent back without the source,
+          // it's pretty rare, but we were unable to find the reason
+          // more details here https://github.com/scalameta/metals/issues/1569
+          if (brPoint.getSource() == null) {
+            brPoint.setSource(source)
+          }
+          this.breakpoints.register(brPoint)
+        }
         response
       }
   }
@@ -189,7 +197,7 @@ final class TestDebugger(
           case Success(value) =>
             failure match {
               case Some(
-                  error
+                    error
                   ) => // propagate failure that occurred while processing action
                 Future.failed(error)
               case None =>
@@ -212,8 +220,8 @@ final class TestDebugger(
 object TestDebugger {
   private val timeout = TimeUnit.SECONDS.toMillis(60).toInt
 
-  def apply(uri: URI, stoppageHandler: Stoppage.Handler)(
-      implicit ec: ExecutionContext
+  def apply(uri: URI, stoppageHandler: Stoppage.Handler)(implicit
+      ec: ExecutionContext
   ): TestDebugger = {
     def connect(listener: RemoteServer.Listener): Debugger = {
       val socket = new Socket()

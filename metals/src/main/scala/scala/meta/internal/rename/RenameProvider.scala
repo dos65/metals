@@ -52,15 +52,22 @@ final class RenameProvider(
 
   private var awaitingSave = new ConcurrentLinkedQueue[() => Unit]
 
+  private def compilationFinished(
+      source: AbsolutePath
+  ): Future[Unit] = {
+    if (compilations.currentlyCompiling.isEmpty) {
+      Future(())
+    } else {
+      compilations.cascadeCompileFiles(Seq(source)).map { _ => () }
+    }
+  }
+
   def prepareRename(
       params: TextDocumentPositionParams,
       token: CancelToken
   ): Future[Option[LSPRange]] = {
-    if (!compilations.currentlyCompiling.isEmpty) {
-      client.showMessage(isCompiling)
-      Future.successful(None)
-    } else {
-      val source = params.getTextDocument.getUri.toAbsolutePath
+    val source = params.getTextDocument.getUri.toAbsolutePath
+    compilationFinished(source).flatMap { _ =>
       definitionProvider.definition(source, params, token).map { definition =>
         val symbolOccurrence =
           definitionProvider.symbolOccurrence(source, params.getPosition)
@@ -80,11 +87,8 @@ final class RenameProvider(
       params: RenameParams,
       token: CancelToken
   ): Future[WorkspaceEdit] = {
-    if (!compilations.currentlyCompiling.isEmpty) {
-      client.showMessage(isCompiling)
-      Future.successful(new WorkspaceEdit())
-    } else {
-      val source = params.getTextDocument.getUri.toAbsolutePath
+    val source = params.getTextDocument.getUri.toAbsolutePath
+    compilationFinished(source).flatMap { _ =>
       definitionProvider.definition(source, params, token).map { definition =>
         val textParams = new TextDocumentPositionParams(
           params.getTextDocument(),
@@ -114,21 +118,23 @@ final class RenameProvider(
           definitionPath = definitionLoc.getUri().toAbsolutePath
           if canRenameSymbol(occurence.symbol, Option(newName)) &&
             isWorkspaceSymbol(occurence.symbol, definitionPath)
-          parentSymbols = implementationProvider
-            .topMethodParents(occurence.symbol, semanticDb)
+          parentSymbols =
+            implementationProvider
+              .topMethodParents(occurence.symbol, semanticDb)
           txtParams <- {
             if (parentSymbols.isEmpty) List(textParams)
             else parentSymbols.map(toTextParams)
           }
           isLocal = occurence.symbol.isLocal
-          currentReferences = referenceProvider
-            .references(
-              // we can't get definition by name for local symbols
-              toReferenceParams(txtParams, includeDeclaration = isLocal),
-              canSkipExactMatchCheck = false,
-              includeSynthetics = includeSynthetic
-            )
-            .locations
+          currentReferences =
+            referenceProvider
+              .references(
+                // we can't get definition by name for local symbols
+                toReferenceParams(txtParams, includeDeclaration = isLocal),
+                canSkipExactMatchCheck = false,
+                includeSynthetics = includeSynthetic
+              )
+              .locations
           definitionLocation = {
             if (parentSymbols.isEmpty)
               definition.locations.asScala
@@ -140,7 +146,8 @@ final class RenameProvider(
             txtParams,
             !occurence.symbol.desc.isType
           )
-          loc <- currentReferences ++ implReferences ++ companionRefs ++ definitionLocation
+          loc <-
+            currentReferences ++ implReferences ++ companionRefs ++ definitionLocation
         } yield loc
 
         def isOccurrence(fn: String => Boolean): Boolean = {
@@ -183,9 +190,10 @@ final class RenameProvider(
     }
   }
 
-  def runSave(): Unit = synchronized {
-    ConcurrentQueue.pollAll(awaitingSave).foreach(waiting => waiting())
-  }
+  def runSave(): Unit =
+    synchronized {
+      ConcurrentQueue.pollAll(awaitingSave).foreach(waiting => waiting())
+    }
 
   private def documentEdits(
       openedEdits: Map[AbsolutePath, List[TextEdit]]
@@ -225,13 +233,15 @@ final class RenameProvider(
   private def companionReferences(sym: String): Seq[Location] = {
     val results = for {
       companionSymbol <- companion(sym).toIterable
-      loc <- definitionProvider
-        .fromSymbol(companionSymbol)
-        .asScala
+      loc <-
+        definitionProvider
+          .fromSymbol(companionSymbol)
+          .asScala
       if loc.getUri().isScalaFilename
-      companionLocs <- referenceProvider
-        .references(toReferenceParams(loc, includeDeclaration = false))
-        .locations :+ loc
+      companionLocs <-
+        referenceProvider
+          .references(toReferenceParams(loc, includeDeclaration = false))
+          .locations :+ loc
     } yield companionLocs
     results.toList
   }
@@ -419,13 +429,6 @@ final class RenameProvider(
     val message =
       s"""|Cannot rename from $old to $renamed since it will change the semantics
           |and might break your code""".stripMargin
-    new MessageParams(MessageType.Error, message)
-  }
-
-  private def isCompiling: MessageParams = {
-    val message =
-      s"""|Cannot rename while the code is compiling
-          |since it could produce incorrect results.""".stripMargin
     new MessageParams(MessageType.Error, message)
   }
 

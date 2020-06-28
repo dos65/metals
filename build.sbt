@@ -6,8 +6,6 @@ def isCI = System.getenv("CI") != null
 def isScala211(v: Option[(Long, Long)]): Boolean = v.contains((2, 11))
 def isScala212(v: Option[(Long, Long)]): Boolean = v.contains((2, 12))
 def isScala213(v: Option[(Long, Long)]): Boolean = v.contains((2, 13))
-def isScala023(v: Option[(Long, Long)]): Boolean = v.contains((0, 23))
-def isScala024(v: Option[(Long, Long)]): Boolean = v.contains((0, 24))
 def isScala2(v: Option[(Long, Long)]): Boolean = v.exists(_._1 == 2)
 def isScala3(v: Option[(Long, Long)]): Boolean =
   v.exists(_._1 == 0) || v.exists(_._1 == 3)
@@ -165,18 +163,18 @@ lazy val V = new {
   val scala211 = "2.11.12"
   val scala212 = "2.12.11"
   val scala213 = "2.13.2"
-  val scalameta = "4.3.10"
+  val scalameta = "4.3.15"
   val semanticdb = scalameta
   val bsp = "2.0.0-M4+10-61e61e87"
-  val bloop = "1.4.0-RC1-289-0d66b4d0-20200531-1145"
-  val scala3 = "0.24.0-RC1"
+  val bloop = "1.4.2"
+  val scala3 = "0.25.0-RC2"
   val bloopNightly = bloop
   val sbtBloop = bloop
   val gradleBloop = bloop
   val mavenBloop = bloop
-  val mdoc = "2.1.5"
-  val scalafmt = "2.5.2"
-  val munit = "0.7.7"
+  val mdoc = "2.2.3"
+  val scalafmt = "2.5.3"
+  val munit = "0.7.9"
   // List of supported Scala versions in SemanticDB. Needs to be manually updated
   // for every SemanticDB upgrade.
   def supportedScalaBinaryVersions =
@@ -192,7 +190,7 @@ lazy val V = new {
   def scala2Versions = nonDeprecatedScala2Versions ++ deprecatedScala2Versions
 
   // Scala 3
-  def nonDeprecatedScala3Versions = Seq(scala3, "0.23.0")
+  def nonDeprecatedScala3Versions = Seq(scala3, "0.24.0")
   def deprecatedScala3Versions = Seq()
   def scala3Versions = nonDeprecatedScala3Versions ++ deprecatedScala3Versions
 
@@ -206,9 +204,9 @@ lazy val V = new {
   def lsp4j = "org.eclipse.lsp4j" % "org.eclipse.lsp4j" % "0.9.0"
   def dap4j =
     "org.eclipse.lsp4j" % "org.eclipse.lsp4j.debug" % "0.9.0"
-  val coursier = "2.0.0-RC6-16"
+  val coursier = "2.0.0-RC6-21"
   val coursierInterfaces = "0.0.22"
-  val ammonite = "2.1.4"
+  val ammonite = "2.1.4-6-2179b35"
 }
 
 val genyVersion = Def.setting {
@@ -259,20 +257,9 @@ def multiScalaDirectories(root: File, scalaVersion: String) = {
   val base = root / "src" / "main"
   val result = mutable.ListBuffer.empty[File]
   val partialVersion = CrossVersion.partialVersion(scalaVersion)
-  if (isScala211(partialVersion)) {
-    result += base / "scala-2.11"
-  }
-  if (isScala212(partialVersion)) {
-    result += base / "scala-2.12"
-  }
-  if (isScala213(partialVersion)) {
-    result += base / "scala-2.13"
-  }
-  if (isScala023(partialVersion)) {
-    result += base / "scala-0.23"
-  }
-  if (isScala024(partialVersion)) {
-    result += base / "scala-0.24"
+  partialVersion.collect {
+    case (major, minor) =>
+      result += base / s"scala-$major.$minor"
   }
   if (isScala2(partialVersion)) {
     result += base / "scala-2"
@@ -304,8 +291,10 @@ val mtagsSettings = List(
     ),
     if3 = List(
       "ch.epfl.lamp" %% "dotty-compiler" % scalaVersion.value,
-      "com.fasterxml.jackson.core" % "jackson-databind" % "2.9.10.4",
+      "com.fasterxml.jackson.core" % "jackson-databind" % "2.11.0",
       ("org.scalameta" %% "scalameta" % V.scalameta)
+        .withDottyCompat(scalaVersion.value),
+      ("org.scala-lang.modules" %% "scala-java8-compat" % "0.9.1")
         .withDottyCompat(scalaVersion.value),
       ("com.lihaoyi" %% "geny" % genyVersion.value)
         .withDottyCompat(scalaVersion.value)
@@ -336,6 +325,7 @@ val mtagsSettings = List(
 lazy val mtags3 = project
   .in(file(".mtags"))
   .settings(
+    unmanagedSourceDirectories.in(Compile) := Seq(),
     sharedSettings,
     mtagsSettings,
     unmanagedSourceDirectories.in(Compile) += baseDirectory
@@ -378,13 +368,13 @@ lazy val metals = project
       // for file watching
       "io.methvin" % "directory-watcher" % "0.9.10",
       // for http client
-      "io.undertow" % "undertow-core" % "2.1.0.Final",
-      "org.jboss.xnio" % "xnio-nio" % "3.8.0.Final",
+      "io.undertow" % "undertow-core" % "2.1.3.Final",
+      "org.jboss.xnio" % "xnio-nio" % "3.8.1.Final",
       // for persistent data like "dismissed notification"
-      "org.flywaydb" % "flyway-core" % "6.4.2",
+      "org.flywaydb" % "flyway-core" % "6.4.4",
       "com.h2database" % "h2" % "1.4.200",
       // for starting `sbt bloopInstall` process
-      "com.zaxxer" % "nuprocess" % "2.0.0",
+      "com.zaxxer" % "nuprocess" % "2.0.1",
       "net.java.dev.jna" % "jna" % "4.5.2",
       "net.java.dev.jna" % "jna-platform" % "4.5.2",
       // for BSP
@@ -398,7 +388,7 @@ lazy val metals = project
       // for producing SemanticDB from Java source files
       "com.thoughtworks.qdox" % "qdox" % "2.0.0",
       // for finding paths of global log/cache directories
-      "io.github.soc" % "directories" % "11",
+      "io.github.soc" % "directories" % "12",
       // ==================
       // Scala dependencies
       // ==================
@@ -413,17 +403,15 @@ lazy val metals = project
       "com.outr" %% "scribe-slf4j" % "2.7.12", // needed for flyway database migrations
       // for debugging purposes, not strictly needed but nice for productivity
       "com.lihaoyi" %% "pprint" % "0.5.9",
-      // For exporting Pants builds.
+      // for JSON formatted doctor
       "com.lihaoyi" %% "ujson" % "1.1.0",
-      "ch.epfl.scala" %% "bloop-config" % V.bloop,
-      "ch.epfl.scala" %% "bloop-frontend" % V.bloop,
       // For remote language server
-      "com.lihaoyi" %% "requests" % "0.5.2",
+      "com.lihaoyi" %% "requests" % "0.6.2",
       // for producing SemanticDB from Scala source files
       "org.scalameta" %% "scalameta" % V.scalameta,
       "org.scalameta" % "semanticdb-scalac-core" % V.scalameta cross CrossVersion.full,
       // For starting Ammonite
-      "io.github.alexarchambault.ammonite" %% "ammonite-runner" % "0.2.3"
+      "io.github.alexarchambault.ammonite" %% "ammonite-runner" % "0.2.6"
     ),
     buildInfoPackage := "scala.meta.internal.metals",
     buildInfoKeys := Seq[BuildInfoKey](
@@ -451,32 +439,10 @@ lazy val metals = project
       "scala212" -> V.scala212,
       "scala213" -> V.scala213,
       "scala3" -> V.scala3
-    ),
-    mainClass in GraalVMNativeImage := Some(
-      "scala.meta.internal.pantsbuild.BloopPants"
-    ),
-    graalVMNativeImageOptions ++= {
-      val reflectionFile =
-        Keys.sourceDirectory.in(Compile).value./("graal")./("reflection.json")
-      assert(reflectionFile.exists, "no such file: " + reflectionFile)
-      List(
-        "-H:+ReportUnsupportedElementsAtRuntime",
-        "--initialize-at-build-time",
-        "--initialize-at-run-time=scala.meta.internal.pantsbuild,metaconfig",
-        "--no-server",
-        "--enable-http",
-        "--enable-https",
-        "-H:EnableURLProtocols=http,https",
-        "--enable-all-security-services",
-        "--no-fallback",
-        s"-H:ReflectionConfigurationFiles=$reflectionFile",
-        "--allow-incomplete-classpath",
-        "-H:+ReportExceptionStackTraces"
-      )
-    }
+    )
   )
   .dependsOn(mtags)
-  .enablePlugins(BuildInfoPlugin, GraalVMNativeImagePlugin)
+  .enablePlugins(BuildInfoPlugin)
 
 lazy val input = project
   .in(file("tests/input"))
@@ -513,21 +479,22 @@ lazy val testSettings: Seq[Def.Setting[_]] = List(
   }
 )
 
-def crossPublishLocal(scalaV: String) = Def.task[Unit] {
-  // Runs `publishLocal` for mtags with `scalaVersion := $scalaV`
-  val newState = Project
-    .extract(state.value)
-    .appendWithSession(
-      List(
-        scalaVersion.in(mtags) := scalaV,
-        useSuperShell.in(ThisBuild) := false
-      ),
-      state.value
-    )
-  val (s, _) = Project
-    .extract(newState)
-    .runTask(publishLocal.in(mtags), newState)
-}
+def crossPublishLocal(scalaV: String) =
+  Def.task[Unit] {
+    // Runs `publishLocal` for mtags with `scalaVersion := $scalaV`
+    val newState = Project
+      .extract(state.value)
+      .appendWithSession(
+        List(
+          scalaVersion.in(mtags) := scalaV,
+          useSuperShell.in(ThisBuild) := false
+        ),
+        state.value
+      )
+    val (s, _) = Project
+      .extract(newState)
+      .runTask(publishLocal.in(mtags), newState)
+  }
 
 def publishAllMtags(
     all: List[String]

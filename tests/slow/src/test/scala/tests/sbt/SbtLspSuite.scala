@@ -8,6 +8,7 @@ import scala.meta.internal.builds.SbtBuildTool
 import scala.meta.internal.builds.SbtDigest
 import scala.meta.internal.metals.ClientCommands
 import scala.meta.internal.metals.Messages._
+import scala.meta.internal.metals.MetalsEnrichments._
 import scala.meta.internal.metals.MetalsSlowTaskResult
 import scala.meta.internal.metals.ServerCommands
 import scala.meta.internal.metals.{BuildInfo => V}
@@ -77,6 +78,8 @@ class SbtLspSuite extends BaseImportSuite("sbt-import") {
             |""".stripMargin
       )
       _ = assertStatus(_.isInstalled)
+      projectVersion = workspace.resolve("project/build.properties").readText
+      _ = assertNoDiff(projectVersion, s"sbt.version=${V.sbtVersion}")
     } yield ()
   }
 
@@ -131,11 +134,12 @@ class SbtLspSuite extends BaseImportSuite("sbt-import") {
            |libraryDependencies += "com.lihaoyi" %% "sourcecode" % "0.1.4"
            |""".stripMargin
       }
-      _ <- server
-        .didSave("src/main/scala/reload/Main.scala") { text =>
-          text.replaceAll("\"", "")
-        }
-        .recover { case e => scribe.error("compile", e) }
+      _ <-
+        server
+          .didSave("src/main/scala/reload/Main.scala") { text =>
+            text.replaceAll("\"", "")
+          }
+          .recover { case e => scribe.error("compile", e) }
       _ = assertNoDiff(client.workspaceDiagnostics, "")
     } yield ()
   }

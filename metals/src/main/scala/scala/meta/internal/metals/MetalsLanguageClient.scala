@@ -43,9 +43,12 @@ trait MetalsLanguageClient
   @JsonNotification("metals/executeClientCommand")
   def metalsExecuteClientCommand(params: ExecuteCommandParams): Unit
 
-  final def refreshModel(): Unit = {
+  final def refreshModel(buildChanged: Boolean): Unit = {
     val command = ClientCommands.RefreshModel.id
-    val params = new ExecuteCommandParams(command, Nil.asJava)
+    val params = new ExecuteCommandParams(
+      command,
+      List(buildChanged.asInstanceOf[Object]).asJava
+    )
     metalsExecuteClientCommand(params)
   }
 
@@ -142,6 +145,11 @@ case class MetalsQuickPickResult(
     // value=null when cancelled=true
     @Nullable itemId: String = null,
     @Nullable cancelled: java.lang.Boolean = null
+)
+
+case class MetalsOpenWindowParams(
+    uri: String,
+    openNewWindow: java.lang.Boolean
 )
 
 case class MetalsQuickPickItem(

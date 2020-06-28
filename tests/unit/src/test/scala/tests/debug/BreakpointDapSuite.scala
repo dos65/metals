@@ -1,20 +1,15 @@
 package tests.debug
-import scala.meta.internal.metals.debug.DebugStep._
+
 import scala.meta.internal.metals.debug.DebugWorkspaceLayout
-import scala.meta.internal.metals.debug.StepNavigator
 import scala.meta.internal.metals.debug.Stoppage
 
-import munit.Location
-import munit.TestOptions
 import tests.BaseDapSuite
 
 // note(@tgodzik) all test have `System.exit(0)` added to avoid occasional issue due to:
 // https://stackoverflow.com/questions/2225737/error-jdwp-unable-to-get-jni-1-2-environment
 class BreakpointDapSuite extends BaseDapSuite("debug-breakpoint") {
 
-  // disabled, because finding enclosing class for the breakpoint line is not working
-  // see [[scala.meta.internal.metals.debug.SetBreakpointsRequestHandler]]
-  assertBreakpoints("preceding-class", disabled = true)(
+  assertBreakpoints("preceding-class")(
     source = """|/a/src/main/scala/a/Main.scala
                 |package a
                 |
@@ -421,13 +416,14 @@ class BreakpointDapSuite extends BaseDapSuite("debug-breakpoint") {
   )
 
   assertBreakpoints("java-static-method")(
-    source = """|/a/src/main/scala/a/Main.scala
-                |package a
-                |object Main {
-                |  def main(args: Array[String]): Unit = {
-                |    Foo.call()
-                |    System.exit(0)
-                |  }
+    source = """|/a/src/main/scala/a/Main.java
+                |package a;
+                |
+                |public class Main {
+                |    public static void main(String[] args) {
+                |        Foo.call();
+                |        System.exit(0);
+                |    }
                 |}
                 |
                 |/a/src/main/java/a/Foo.java
@@ -490,6 +486,30 @@ class BreakpointDapSuite extends BaseDapSuite("debug-breakpoint") {
                 |    Foo foo = new Foo();
                 |    Bar bar = foo.new Bar();
                 |    bar.call();
+                |  }
+                |}
+                |""".stripMargin
+  )
+
+  assertBreakpoints("java-preceeding")(
+    source = """|/a/src/main/scala/a/Main.scala
+                |package a
+                |object Main {
+                |  def main(args: Array[String]): Unit = {
+                |    val foo = new Foo()
+                |    foo.call()
+                |    System.exit(0)
+                |  }
+                |}
+                |
+                |/a/src/main/java/a/Foo.java
+                |package a;
+                |
+                |class Foo {
+                |  class Bar {}
+                |
+                |  void call() {
+                |>>  System.out.println();
                 |  }
                 |}
                 |""".stripMargin
@@ -569,7 +589,7 @@ class BreakpointDapSuite extends BaseDapSuite("debug-breakpoint") {
   )
 
   // TODO: https://github.com/scalameta/metals/issues/1196
-  assertBreakpoints("ambiguous", disabled = true)(
+  assertBreakpoints("ambiguous".ignore)(
     source = """|/a/src/main/scala/a/Main.scala
                 |package a
                 |object Main {
@@ -631,44 +651,4 @@ class BreakpointDapSuite extends BaseDapSuite("debug-breakpoint") {
       output <- debugger.allOutput
     } yield assertNoDiff(output, "1\n2\n3\n")
   }
-
-  def assertBreakpoints(name: TestOptions, disabled: Boolean = false)(
-      source: String
-  )(implicit loc: Location): Unit = {
-    if (disabled) return
-
-    test(name) {
-      cleanWorkspace()
-      val workspaceLayout = DebugWorkspaceLayout(source)
-
-      val layout =
-        s"""|/metals.json
-            |{ "a": {}, "b": {} }
-            |
-            |$workspaceLayout
-            |""".stripMargin
-
-      val expectedBreakpoints = workspaceLayout.files.flatMap { file =>
-        file.breakpoints.map(b => Breakpoint(file.relativePath, b.startLine))
-      }
-
-      val navigator = expectedBreakpoints.foldLeft(StepNavigator(workspace)) {
-        (navigator, breakpoint) =>
-          navigator.at(breakpoint.relativePath, breakpoint.line + 1)(Continue)
-      }
-
-      for {
-        _ <- server.initialize(layout)
-        _ = assertNoDiagnostics()
-        debugger <- debugMain("a", "a.Main", navigator)
-        _ <- debugger.initialize
-        _ <- debugger.launch
-        _ <- setBreakpoints(debugger, workspaceLayout)
-        _ <- debugger.configurationDone
-        _ <- debugger.shutdown
-      } yield ()
-    }
-  }
-
-  private final case class Breakpoint(relativePath: String, line: Int)
 }

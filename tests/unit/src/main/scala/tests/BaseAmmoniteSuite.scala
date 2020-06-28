@@ -9,6 +9,7 @@ import scala.concurrent.Promise
 
 import scala.meta.internal.metals.Messages
 import scala.meta.internal.metals.MetalsEnrichments._
+import scala.meta.internal.metals.{BuildInfo => V}
 
 import org.eclipse.lsp4j.MessageActionItem
 import org.eclipse.lsp4j.Position
@@ -96,7 +97,8 @@ abstract class BaseAmmoniteSuite(scalaVersion: String)
     } yield ()
   }
 
-  test("hover") {
+  //https://github.com/scalameta/metals/issues/1801
+  test("hover".flaky) {
     for {
       _ <- server.initialize(
         s"""
@@ -136,26 +138,23 @@ abstract class BaseAmmoniteSuite(scalaVersion: String)
                            |```""".stripMargin
       hoverRes <- assertHoverAtPos("main.sc", 10, 5)
       _ = assertNoDiff(hoverRes, expectedHoverRes)
-
       refreshedPromise = {
         val promise = Promise[Unit]()
-        server.client.refreshModelHandler = { refreshCount =>
-          if (refreshCount > 0 && !promise.isCompleted)
+        server.client.refreshBuildHandler = { () =>
+          if (!promise.isCompleted)
             promise.success(())
         }
         promise
       }
-
       _ <- server.didSave("main.sc") { _ =>
         s""" // scala $scalaVersion
            |import $$ivy.`com.github.alexarchambault::case-app:2.0.0-M16`
            |import caseapp.CaseApp
            |""".stripMargin
       }
-
       // wait for Ammonite build targets to be reloaded
       _ <- refreshedPromise.future
-
+      _ <- server.didSave("main.sc") { text => text + "\nval a = 1" }
       // Hover on class defined in dependency loaded after the re-index.
       // Fails if interactive compilers were not properly discarded prior
       // to re-indexing.
@@ -164,6 +163,91 @@ abstract class BaseAmmoniteSuite(scalaVersion: String)
                               |```""".stripMargin
       newHoverRes <- assertHoverAtPos("main.sc", 2, 18)
       _ = assertNoDiff(newHoverRes, expectedNewHoverRes)
+
+    } yield ()
+  }
+
+  test("file-completion") {
+    for {
+      _ <- server.initialize(
+        s"""
+           |/metals.json
+           |{
+           |  "a": {
+           |    "scalaVersion": "$scalaVersion"
+           |  }
+           |}
+           |/b/otherMain.sc
+           | // scala $scalaVersion
+           |import $$file.other
+           |
+           |/b/otherScript.sc
+           |val a = ""
+           |           
+           |/b/other.sc
+           |val a = ""
+           |
+           |/b/others/Script.sc
+           |val a = ""
+           |
+           |/b/notThis.sc
+           |val a = ""
+           |
+           |""".stripMargin
+      )
+      _ <- server.didOpen("b/otherMain.sc")
+      _ <- server.didOpen("b/other.sc")
+      _ <- server.didOpen("b/otherScript.sc")
+      _ <- server.didOpen("b/others/Script.sc")
+      _ <- server.didOpen("b/notThis.sc")
+      _ <- server.executeCommand("ammonite-start")
+      _ <- server.didSave("b/otherMain.sc")(identity)
+      _ <- server.didSave("b/other.sc")(identity)
+      _ <- server.didSave("b/otherScript.sc")(identity)
+      _ <- server.didSave("b/others/Script.sc")(identity)
+      _ <- server.didSave("b/notThis.sc")(identity)
+      expectedCompletionList = """|other.sc
+                                  |otherScript.sc
+                                  |others""".stripMargin
+      completionList <- server.completion(
+        "b/otherMain.sc",
+        "import $file.other@@"
+      )
+      _ = assertNoDiff(completionList, expectedCompletionList)
+
+    } yield ()
+  }
+
+  test("file-completion-path") {
+    for {
+      _ <- server.initialize(
+        s"""
+           |/metals.json
+           |{
+           |  "a": {
+           |    "scalaVersion": "$scalaVersion"
+           |  }
+           |}
+           |/foos/Script.sc
+           |val a = ""
+           |
+           |/foo.sc
+           | // scala $scalaVersion
+           |import $$file.foos.Script
+           |""".stripMargin
+      )
+      _ <- server.didOpen("foo.sc")
+      _ <- server.didOpen("foos/Script.sc")
+      _ <- server.executeCommand("ammonite-start")
+      _ <- server.didSave("foo.sc")(identity)
+      _ <- server.didSave("foos/Script.sc")(identity)
+
+      expectedCompletionList = "Script.sc"
+      completionList <- server.completion(
+        "foo.sc",
+        "import $file.foos.Script@@"
+      )
+      _ = assertNoDiff(completionList, expectedCompletionList)
 
     } yield ()
   }
@@ -355,7 +439,7 @@ abstract class BaseAmmoniteSuite(scalaVersion: String)
            |  }
            |}
            |/project/build.properties
-           |sbt.version=1.3.8
+           |sbt.version=${V.sbtVersion}
            |/build.sbt
            | // dummy sbt project, metals assumes a mill project else, and mill import seems flaky
            |lazy val a = project

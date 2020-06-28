@@ -151,15 +151,24 @@ trait MatchCaseCompletions { this: MetalsGlobal =>
       pos: Position,
       text: String
   ) extends CompletionPosition {
+    private def subclassesForType(tpe: Type): List[Symbol] = {
+      val subclasses = ListBuffer.empty[Symbol]
+      if (tpe.typeSymbol.isRefinementClass) {
+        val RefinedType(parents, _) = tpe
+        parents.foreach(t =>
+          t.typeSymbol.foreachKnownDirectSubClass { sym => subclasses += sym }
+        )
+      } else {
+        tpe.typeSymbol.foreachKnownDirectSubClass { sym => subclasses += sym }
+      }
+      subclasses.result()
+    }
     override def contribute: List[Member] = {
-      val tpe = prefix.widen
+      val tpe = prefix.widen.bounds.hi
       val members = ListBuffer.empty[TextEditMember]
       val importPos = autoImportPosition(pos, text)
       val context = doLocateImportContext(pos, importPos)
-      val subclasses = ListBuffer.empty[Symbol]
-
-      tpe.typeSymbol.foreachKnownDirectSubClass { sym => subclasses += sym }
-      val subclassesResult = subclasses.result()
+      val subclassesResult = subclassesForType(tpe)
 
       // sort subclasses by declaration order
       // see: https://github.com/scalameta/metals-feature-requests/issues/49
@@ -286,7 +295,9 @@ trait MatchCaseCompletions { this: MetalsGlobal =>
     name.endsWith(CURSOR) &&
       "match".startsWith(name.toString().stripSuffix(CURSOR))
 
-  /** Returns true if the identifier comes after an opening brace character '{' */
+  /**
+   * Returns true if the identifier comes after an opening brace character '{'
+   */
   def hasLeadingBrace(ident: Ident, text: String): Boolean = {
     val openDelim: Int = {
       var start = ident.pos.start - 1
@@ -322,9 +333,11 @@ trait MatchCaseCompletions { this: MetalsGlobal =>
         context.symbolIsInScope(sym) ||
           autoImports.nonEmpty
       val infixPattern: Option[String] =
-        if (isInfixEligible &&
+        if (
+          isInfixEligible &&
           sym.isCase &&
-          !Character.isUnicodeIdentifierStart(sym.decodedName.head)) {
+          !Character.isUnicodeIdentifierStart(sym.decodedName.head)
+        ) {
           sym.primaryConstructor.paramss match {
             case (a :: b :: Nil) :: _ =>
               Some(
@@ -384,13 +397,14 @@ trait MatchCaseCompletions { this: MetalsGlobal =>
 
   class Parents(val selector: Type) {
     def this(pos: Position) = this(typedTreeAt(pos).tpe)
-    def this(tpes: List[Type]) = this(
-      tpes match {
-        case Nil => NoType
-        case head :: Nil => head
-        case _ => definitions.tupleType(tpes)
-      }
-    )
+    def this(tpes: List[Type]) =
+      this(
+        tpes match {
+          case Nil => NoType
+          case head :: Nil => head
+          case _ => definitions.tupleType(tpes)
+        }
+      )
     val isParent: Set[Symbol] =
       Set(selector.typeSymbol, selector.typeSymbol.companion)
         .filterNot(_ == NoSymbol)

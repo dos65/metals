@@ -423,7 +423,9 @@ object Bill {
     println(s"error: abnormal exit path")
   }
 
-  /** Installed this build tool only for the local workspace */
+  /**
+   * Installed this build tool only for the local workspace
+   */
   def installWorkspace(
       directory: Path,
       name: String = "Bill"
@@ -431,7 +433,9 @@ object Bill {
     handleInstall(directory.resolve(".bsp"), name)
   }
 
-  /** Installed this build server globally for the machine */
+  /**
+   * Installed this build server globally for the machine
+   */
   def installGlobal(
       directory: Path,
       name: String = "Bill"
@@ -492,26 +496,28 @@ object Bill {
     }
     server.onConnectWithClient(client)
     val result = for {
-      _ <- server
-        .buildInitialize(
-          new InitializeBuildParams(
-            "Metals",
-            BuildInfo.metalsVersion,
-            BuildInfo.bspVersion,
-            wd.toUri.toString,
-            new BuildClientCapabilities(
-              Collections.singletonList("scala")
+      _ <-
+        server
+          .buildInitialize(
+            new InitializeBuildParams(
+              "Metals",
+              BuildInfo.metalsVersion,
+              BuildInfo.bspVersion,
+              wd.toUri.toString,
+              new BuildClientCapabilities(
+                Collections.singletonList("scala")
+              )
             )
           )
-        )
-        .asScala
+          .asScala
       _ = server.onBuildInitialized()
       buildTargets <- server.workspaceBuildTargets().asScala
-      _ <- server
-        .buildTargetCompile(
-          new CompileParams(buildTargets.getTargets.map(_.getId))
-        )
-        .asScala
+      _ <-
+        server
+          .buildTargetCompile(
+            new CompileParams(buildTargets.getTargets.map(_.getId))
+          )
+          .asScala
     } yield ()
     Await.result(result, Duration("1min"))
   }

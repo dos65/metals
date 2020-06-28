@@ -60,11 +60,13 @@ class MetalsTreeViewProvider(
     _.getUri(),
     uri => new BuildTargetIdentifier(uri),
     _.displayName,
-    _.baseDirectory, { () =>
+    _.baseDirectory,
+    { () =>
       buildTargets.all.filter(target =>
         buildTargets.buildTargetSources(target.id).nonEmpty
       )
-    }, { (id, symbol) =>
+    },
+    { (id, symbol) =>
       doCompile(id)
       buildTargets.scalacOptions(id) match {
         case None =>
@@ -208,7 +210,7 @@ class MetalsTreeViewProvider(
         )
       case Project =>
         Option(params.nodeUri) match {
-          case None =>
+          case None if buildTargets.all.nonEmpty =>
             Array(
               projects.root,
               libraries.root
@@ -221,12 +223,15 @@ class MetalsTreeViewProvider(
             } else {
               Array.empty
             }
+          case _ => Array.empty
         }
       case Build =>
         Option(params.nodeUri) match {
           case None =>
             Array(
               TreeViewNode.fromCommand(ServerCommands.ImportBuild, "sync"),
+              TreeViewNode
+                .fromCommand(ServerCommands.NewScalaProject, "empty-window"),
               TreeViewNode
                 .fromCommand(ServerCommands.ConnectBuildServer, "connect"),
               TreeViewNode
