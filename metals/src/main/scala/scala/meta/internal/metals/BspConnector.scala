@@ -17,15 +17,15 @@ class BspConnector(
       buildTools: BuildTools
   )(implicit ec: ExecutionContext): Future[Option[BspSession]] = {
 
+    def connect(workspace: AbsolutePath): Future[Option[BuildServerConnection]] = {
+      if (buildTools.isBloop)
+        bloopServers.newServer(workspace, userConfiguration)
+      else
+        bspServers.newServer(workspace)
+    }
+
     val metaDirectories =
       if (buildTools.isSbt) sbtMetaWorkspaces(workspace) else List.empty
-
-    val connect = (ws: AbsolutePath) => {
-      if (buildTools.isBloop)
-        bloopServers.newServer(ws, userConfiguration)
-      else
-        bspServers.newServer(ws)
-    }
 
     connect(workspace).flatMap { mainOpt =>
       mainOpt match {

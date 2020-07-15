@@ -6,6 +6,8 @@ import java.util.Properties
 import scala.meta.internal.metals._
 import scala.meta.io.AbsolutePath
 
+import MetalsEnrichments._
+
 case class SbtBuildTool(
     workspaceVersion: Option[String],
     userConfig: () => UserConfiguration
@@ -91,7 +93,7 @@ case class SbtBuildTool(
         acc: List[AbsolutePath]
     ): List[AbsolutePath] = {
       val projectDir = dir.resolve("project")
-      if (Files.exists(projectDir.toNIO)) {
+      if (projectDir.exists) {
         val toCreate = projectDir.resolve("project")
         sbtMetaDirs(projectDir, toCreate :: acc)
       } else

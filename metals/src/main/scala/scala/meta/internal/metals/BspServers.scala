@@ -35,11 +35,11 @@ final class BspServers(
 )(implicit ec: ExecutionContextExecutorService) {
 
   def newServer(
-      workspace: AbsolutePath
+      projectDirectory: AbsolutePath
   ): Future[Option[BuildServerConnection]] = {
-    findServer(workspace).flatMap { details =>
+    findServer(projectDirectory).flatMap { details =>
       details
-        .map(d => newServer(workspace, d).map(Option(_)))
+        .map(d => newServer(projectDirectory, d).map(Option(_)))
         .getOrElse(Future.successful(None))
     }
   }
@@ -62,13 +62,13 @@ final class BspServers(
   }
 
   private def newServer(
-      workspace: AbsolutePath,
+      projectDirectory: AbsolutePath,
       details: BspConnectionDetails
   ): Future[BuildServerConnection] = {
 
     def newConnection(): Future[SocketConnection] = {
       val process = new ProcessBuilder(details.getArgv)
-        .directory(workspace.toFile)
+        .directory(projectDirectory.toFile)
         .start()
 
       val output = new ClosableOutputStream(
@@ -101,7 +101,7 @@ final class BspServers(
     }
 
     BuildServerConnection.fromSockets(
-      workspace,
+      projectDirectory,
       buildClient,
       client,
       newConnection,
@@ -111,9 +111,9 @@ final class BspServers(
   }
 
   private def findServer(
-      workspace: AbsolutePath
+      projectDirectory: AbsolutePath
   ): Future[Option[BspConnectionDetails]] = {
-    findAvailableServers(workspace) match {
+    findAvailableServers(projectDirectory) match {
       case Nil =>
         Future.successful(None)
       case head :: Nil =>
@@ -137,9 +137,9 @@ final class BspServers(
   }
 
   private def findAvailableServers(
-      workspace: AbsolutePath
+      projectDirectory: AbsolutePath
   ): List[BspConnectionDetails] = {
-    val jsonFiles = findJsonFiles(workspace)
+    val jsonFiles = findJsonFiles(projectDirectory)
     val gson = new Gson()
     for {
       candidate <- jsonFiles
@@ -158,7 +158,7 @@ final class BspServers(
     }
   }
 
-  private def findJsonFiles(workspace: AbsolutePath): List[AbsolutePath] = {
+  private def findJsonFiles(projectDirectory: AbsolutePath): List[AbsolutePath] = {
     val buf = List.newBuilder[AbsolutePath]
     def visit(dir: AbsolutePath): Unit =
       dir.list.foreach { p =>
@@ -166,7 +166,7 @@ final class BspServers(
           buf += p
         }
       }
-    visit(workspace.resolve(".bsp"))
+    visit(projectDirectory.resolve(".bsp"))
     bspGlobalInstallDirectories.foreach(visit)
     buf.result()
   }

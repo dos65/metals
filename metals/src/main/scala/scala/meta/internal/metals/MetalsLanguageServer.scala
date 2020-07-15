@@ -1674,7 +1674,6 @@ class MetalsLanguageServer(
         lastImportedBuilds = i.map(_.build)
       }
       _ <- profiledIndexWorkspace(() => {
-        // TODO do we need to run doctor for meta builds?
         val main = session.mainConnection
         doctor.check(main.name, main.version)
       })
