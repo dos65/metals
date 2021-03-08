@@ -4,6 +4,7 @@ import scala.meta.Dialect
 import scala.meta.dialects._
 import scala.meta.internal.mtags
 import scala.meta.internal.semver.SemVer
+import scala.util.Try
 
 object ScalaVersions {
 
@@ -97,4 +98,16 @@ object ScalaVersions {
       case _ => Scala213
     }
   }
+
+  def supportTasty(scalaVersion: String): Boolean = {
+    def `is2.13.4OrHigher`: Boolean =
+      scalaVersion.split('.').toList match {
+        case "2" :: "13" :: patch :: _ =>
+          Try(patch.toInt).toOption.exists(_ >= 4)
+        case _ => false
+      }
+
+    isScala3Milestone(scalaVersion) || `is2.13.4OrHigher`
+  }
+
 }

@@ -326,6 +326,7 @@ val mtagsSettings = List(
       ("com.lihaoyi" %% "geny" % genyVersion.value)
         .withDottyCompat(scalaVersion.value),
       "org.scala-lang" %% "scala3-compiler" % scalaVersion.value,
+      "org.scala-lang" %% "scala3-tasty-inspector" % scalaVersion.value,
       ("org.scalameta" %% "scalameta" % V.scalameta)
         .withDottyCompat(scalaVersion.value)
     )
@@ -499,6 +500,7 @@ lazy val input = project
   .in(file("tests/input"))
   .settings(
     sharedSettings,
+    semanticdbEnabled := true,
     skip.in(publish) := true,
     scalacOptions ++= List(
       "-P:semanticdb:synthetics:on"
@@ -520,6 +522,7 @@ lazy val input3 = project
   .settings(
     sharedSettings,
     scalaVersion := V.scala3,
+    semanticdbEnabled := true,
     skip.in(publish) := true
   )
   .disablePlugins(ScalafixPlugin)

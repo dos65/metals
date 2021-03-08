@@ -18,6 +18,7 @@ import coursierapi.MavenRepository
 import coursierapi.Repository
 import coursierapi.ResolutionParams
 import mdoc.interfaces.Mdoc
+import scala.meta.scala3.TastyInspect
 
 /**
  * Wrapper around software that is embedded with Metals.
@@ -26,14 +27,15 @@ import mdoc.interfaces.Mdoc
  * - mdoc
  */
 final class Embedded(
-    icons: Icons,
-    statusBar: StatusBar,
+    trackSlowTask: Embedded.TrackSlowTask,
     userConfig: () => UserConfiguration
 ) extends Cancelable {
 
   private val mdocs: TrieMap[String, URLClassLoader] =
     TrieMap.empty
   private val presentationCompilers: TrieMap[String, URLClassLoader] =
+    TrieMap.empty
+  private val tastyInspect: TrieMap[String, URLClassLoader] =
     TrieMap.empty
 
   override def cancel(): Unit = {
@@ -44,9 +46,9 @@ final class Embedded(
   def mdoc(scalaVersion: String, scalaBinaryVersion: String): Mdoc = {
     val classloader = mdocs.getOrElseUpdate(
       scalaBinaryVersion,
-      statusBar.trackSlowTask("Preparing worksheets") {
+      trackSlowTask("Preparing worksheets")(
         Embedded.newMdocClassLoader(scalaVersion, scalaBinaryVersion)
-      }
+      )
     )
     serviceLoader(
       classOf[Mdoc],
@@ -61,7 +63,7 @@ final class Embedded(
   ): PresentationCompiler = {
     val classloader = presentationCompilers.getOrElseUpdate(
       ScalaVersions.dropVendorSuffix(scalaVersion),
-      statusBar.trackSlowTask("Preparing presentation compiler") {
+      trackSlowTask("Preparing presentation compiler") {
         Embedded.newPresentationCompilerClassLoader(scalaVersion, classpath)
       }
     )
@@ -72,14 +74,27 @@ final class Embedded(
     )
   }
 
+  def tastyInspect(scalaVersion: String): TastyInspect = {
+    val classLoader = tastyInspect.getOrElseUpdate(
+      ScalaVersions.dropVendorSuffix(scalaVersion),
+      Embedded.newTastyInspectClassLoader(scalaVersion)
+    )
+    serviceLoader(
+      classOf[TastyInspect],
+      "scala.meta.internal.metals.TastyInspect",
+      classLoader
+    )
+  }
+
   private def serviceLoader[T](
       cls: Class[T],
       className: String,
       classloader: URLClassLoader
   ): T = {
     val services = ServiceLoader.load(cls, classloader).iterator()
-    if (services.hasNext) services.next()
-    else {
+    if (services.hasNext) {
+      services.next()
+    } else {
       // NOTE(olafur): ServiceLoader doesn't find the service on Appveyor for
       // some reason, I'm unable to reproduce on my computer. Here below we
       // fallback to manual classloading.
@@ -93,6 +108,29 @@ final class Embedded(
 }
 
 object Embedded {
+
+  trait TrackSlowTask {
+    def apply[A](message: String)(f: => A): A
+  }
+  object TrackSlowTask {
+    val noop: TrackSlowTask =
+      new TrackSlowTask {
+        def apply[A](message: String)(f: => A): A = f
+      }
+  }
+
+  def apply(
+      statusBar: StatusBar,
+      userConfig: () => UserConfiguration
+  ): Embedded = {
+    val trackSlowTask =
+      new TrackSlowTask {
+        def apply[A](message: String)(f: => A): A =
+          statusBar.trackSlowTask(message)(f)
+      }
+    new Embedded(trackSlowTask, userConfig)
+  }
+
   lazy val repositories: List[Repository] =
     Repository.defaults().asScala.toList ++
       List(
@@ -269,6 +307,21 @@ object Embedded {
     // Share classloader for a subset of types.
     val parent =
       new PresentationCompilerClassLoader(this.getClass.getClassLoader)
+    new URLClassLoader(allURLs, parent)
+  }
+
+  def newTastyInspectClassLoader(
+      fullScalaVersion: String
+  ): URLClassLoader = {
+    val scalaVersion = ScalaVersions
+      .dropVendorSuffix(fullScalaVersion)
+    val dep = mtagsDependency(scalaVersion)
+    val jars = fetchSettings(dep, fullScalaVersion)
+      .fetch()
+      .asScala
+      .map(_.toPath)
+    val allURLs = jars.map(_.toUri.toURL).toArray
+    val parent = SharedClassLoader.forTastyInspect(this.getClass.getClassLoader)
     new URLClassLoader(allURLs, parent)
   }
 

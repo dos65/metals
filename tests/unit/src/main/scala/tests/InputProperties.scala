@@ -10,8 +10,10 @@ import tests.MetalsTestEnrichments._
 case class InputProperties(
     sourceroot: AbsolutePath,
     sourceDirectories: List[AbsolutePath],
+    classDirectory: Option[AbsolutePath],
     classpath: Classpath,
-    dependencySources: Classpath
+    dependencySources: Classpath,
+    semanticdbRoot: Option[AbsolutePath]
 ) {
 
   def scalaFiles: List[InputFile] = {
@@ -48,19 +50,31 @@ object InputProperties {
     assert(in != null, s"no such resource: $path")
     try props.load(in)
     finally in.close()
+
+    def getKeyOpt(key: String): Option[String] =
+      Option(props.getProperty(key))
     def getKey(key: String): String = {
-      Option(props.getProperty(key)).getOrElse {
+      getKeyOpt(key).getOrElse {
         throw new IllegalArgumentException(props.toString)
       }
     }
     InputProperties(
       sourceroot = AbsolutePath(getKey("sourceroot")),
       sourceDirectories = Classpath(getKey("sourceDirectories")).entries,
+      classDirectory = getKeyOpt("classDirectory").map(AbsolutePath(_)),
       classpath = Classpath(getKey("classpath")),
-      dependencySources = Classpath(getKey("dependencySources"))
+      dependencySources = Classpath(getKey("dependencySources")),
+      semanticdbRoot = getKeyOpt("semanticdbRoot").map(AbsolutePath(_))
     )
   }
 
   def fromDirectory(directory: AbsolutePath): InputProperties =
-    InputProperties(directory, List(directory), Classpath(Nil), Classpath(Nil))
+    InputProperties(
+      directory,
+      List(directory),
+      None,
+      Classpath(Nil),
+      Classpath(Nil),
+      None
+    )
 }

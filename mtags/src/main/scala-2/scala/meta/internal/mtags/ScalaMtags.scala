@@ -1,19 +1,6 @@
 package scala.meta.internal.mtags
 
-import scala.meta.Ctor
-import scala.meta.Decl
-import scala.meta.Defn
-import scala.meta.Member
-import scala.meta.Mod
-import scala.meta.Name
-import scala.meta.Parsed
-import scala.meta.Pat
-import scala.meta.Pkg
-import scala.meta.Source
-import scala.meta.Template
-import scala.meta.Term
-import scala.meta.Tree
-import scala.meta.Type
+import scala.meta._
 import scala.meta.dialects.Scala213
 import scala.meta.dialects.Scala3
 import scala.meta.inputs.Input
@@ -22,6 +9,10 @@ import scala.meta.internal.semanticdb.Scala._
 import scala.meta.internal.semanticdb.SymbolInformation.Kind
 import scala.meta.internal.semanticdb.SymbolInformation.Property
 import scala.meta.transversers.SimpleTraverser
+import MtagsEnrichments._
+import java.net.URI
+import java.nio.file.Paths
+import scala.util.Try
 
 object ScalaMtags {
   def index(input: Input.VirtualFile): MtagsIndexer = {
@@ -40,18 +31,39 @@ class ScalaMtags(val input: Input.VirtualFile)
       case _ => Scala3(input).parse[Source]
     }
   }
+
   def source: Source = root.get
   override def language: Language = Language.SCALA
+
+  // Scala3 - in case if any toplevel `def`/`val`/`given`/`extension` found
+  // remember the owner, name and firstLine for constructing source-toplevel-package symbol
+  private var sourceToplevelSym: Option[(String, String, Int)] = None
+
   override def indexRoot(): Unit = {
     root match {
-      case Parsed.Success(tree) => apply(tree)
+      case Parsed.Success(tree) =>
+        apply(tree)
+        sourceToplevelSym.foreach { case (owner, name, startLine) =>
+          val pos = Position.Range(input, startLine, 0, startLine, 0)
+          withOwner(owner)(term(name, pos, Kind.METHOD, 0))
+        }
       case _ => // do nothing in case of parse error
     }
   }
   def currentTree: Tree = myCurrentTree
   private var myCurrentTree: Tree = Source(Nil)
+
   override def apply(tree: Tree): Unit =
     withOwner() {
+      def registerSourceToplevel(): Option[String] = {
+        sourceToplevelSym match {
+          case None if owner.endsWith("/") =>
+            val name = toplevelDefnOwner(currentOwner)
+            sourceToplevelSym = Some((currentOwner, name, tree.pos.startLine))
+            Some(s"$currentOwner/$name.")
+          case _ => None
+        }
+      }
       def continue(): Unit = super.apply(tree)
       def stop(): Unit = ()
       def enterTermParameters(
@@ -160,8 +172,11 @@ class ScalaMtags(val input: Input.VirtualFile)
         case t: Defn.Object =>
           term(t.name, Kind.OBJECT, 0); continue()
         case t: Defn.Type =>
-          tpe(t.name, Kind.TYPE, 0); stop()
-          enterTypeParameters(t.tparams)
+          val typeOwner = registerSourceToplevel().getOrElse(currentOwner)
+          withOwner(typeOwner) {
+            tpe(t.name, Kind.TYPE, 0); stop()
+            enterTypeParameters(t.tparams)
+          }
         case t: Decl.Type =>
           tpe(t.name, Kind.TYPE, 0); stop()
           enterTypeParameters(t.tparams)
@@ -173,7 +188,25 @@ class ScalaMtags(val input: Input.VirtualFile)
           enterPatterns(t.pats, Kind.METHOD, Property.VAR.value); stop()
         case t: Decl.Var =>
           enterPatterns(t.pats, Kind.METHOD, Property.VAR.value); stop()
+        case t: Defn.Enum =>
+          tpe(t.name, Kind.CLASS, 0)
+        case _: Defn.GivenAlias | _: Defn.Given | _: Defn.ExtensionGroup |
+            _: Defn.Def | _: Defn.Val | _: Defn.Var | _: Defn.Type =>
+          registerSourceToplevel()
         case _ => stop()
       }
     }
+
+  /**
+   * The owner of toplevel definition such as def/val is `$filename$package$`
+   */
+  private def toplevelDefnOwner(prev: String): String = {
+    Try {
+      val uri = URI.create(input.path)
+      val filename = Paths.get(uri).filename
+      val name = filename.stripSuffix(".scala")
+      s"$name$$package"
+    }.getOrElse("")
+  }
+
 }
