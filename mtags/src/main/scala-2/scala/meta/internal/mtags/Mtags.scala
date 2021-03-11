@@ -1,5 +1,7 @@
 package scala.meta.internal.mtags
 
+import scala.meta.Dialect
+import scala.meta.dialects
 import scala.meta.inputs.Input
 import scala.meta.internal.mtags.MtagsEnrichments._
 import scala.meta.internal.semanticdb.Language
@@ -22,7 +24,11 @@ final class Mtags {
       List(toplevelClass)
     } else if (language.isScala) {
       addLines(language, input.text)
-      new ScalaToplevelMtags(input, includeInnerClasses = false)
+      new ScalaToplevelMtags(
+        input,
+        includeInnerClasses = false,
+        dialects.Scala213
+      )
         .index()
         .occurrences
         .iterator
@@ -33,6 +39,21 @@ final class Mtags {
       Nil
     }
   }
+
+  def scalaToplevels(
+      input: Input.VirtualFile,
+      dialect: Dialect
+  ): List[String] = {
+    addLines(Language.SCALA, input.text)
+    new ScalaToplevelMtags(input, includeInnerClasses = false, dialect)
+      .index()
+      .occurrences
+      .iterator
+      .filterNot(_.symbol.isPackage)
+      .map(_.symbol)
+      .toList
+  }
+
   def index(language: Language, input: Input.VirtualFile): TextDocument = {
     addLines(language, input.text)
     val result =
@@ -77,7 +98,11 @@ object Mtags {
       case Language.JAVA =>
         new JavaMtags(input).index()
       case Language.SCALA =>
-        new ScalaToplevelMtags(input, includeInnerClasses = true).index()
+        new ScalaToplevelMtags(
+          input,
+          includeInnerClasses = true,
+          dialects.Scala213
+        ).index()
       case _ =>
         TextDocument()
     }

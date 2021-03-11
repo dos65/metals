@@ -500,9 +500,6 @@ lazy val input = project
   .settings(
     sharedSettings,
     skip.in(publish) := true,
-    scalacOptions ++= List(
-      "-P:semanticdb:synthetics:on"
-    ),
     libraryDependencies ++= List(
       // these projects have macro annotations
       "org.scalameta" %% "scalameta" % V.scalameta,

@@ -1,5 +1,7 @@
 package scala.meta.internal.mtags
 
+import java.nio.file.Paths
+
 import scala.meta.Ctor
 import scala.meta.Decl
 import scala.meta.Defn
@@ -17,6 +19,7 @@ import scala.meta.Type
 import scala.meta.dialects.Scala213
 import scala.meta.dialects.Scala3
 import scala.meta.inputs.Input
+import scala.meta.internal.mtags.MtagsEnrichments._
 import scala.meta.internal.semanticdb.Language
 import scala.meta.internal.semanticdb.Scala._
 import scala.meta.internal.semanticdb.SymbolInformation.Kind
@@ -48,6 +51,14 @@ class ScalaMtags(val input: Input.VirtualFile)
       case _ => // do nothing in case of parse error
     }
   }
+
+  private lazy val (toplevelSourceOwner, toplevelOverloads) = {
+    val filename = Paths.get(input.path).filename
+    val srcName = filename.stripSuffix(".scala")
+    val name = s"$srcName$$package."
+    (name, new OverloadDisambiguator())
+  }
+
   def currentTree: Tree = myCurrentTree
   private var myCurrentTree: Tree = Source(Nil)
   override def apply(tree: Tree): Unit =
@@ -100,36 +111,67 @@ class ScalaMtags(val input: Input.VirtualFile)
           }
         }
       }
+      def disambiguatedMethod(
+          member: Member,
+          name: Name,
+          tparams: List[Type.Param],
+          paramss: List[List[Term.Param]],
+          kind: Kind,
+          overloads: OverloadDisambiguator
+      ): Unit = {
+        val old = myCurrentTree
+        myCurrentTree = member
+        val disambiguator = overloads.disambiguator(name.value)
+        withOwner() {
+          method(name, disambiguator, kind, 0)
+          enterTypeParameters(tparams)
+          enterTermParameters(paramss, isPrimaryCtor = false)
+        }
+        myCurrentTree = old
+      }
       myCurrentTree = tree
       tree match {
         case _: Source => continue()
         case t: Template =>
           val overloads = new OverloadDisambiguator()
           overloads.disambiguator("") // primary constructor
-          def disambiguatedMethod(
-              member: Member,
-              name: Name,
-              tparams: List[Type.Param],
-              paramss: List[List[Term.Param]],
-              kind: Kind
-          ): Unit = {
-            val old = myCurrentTree
-            myCurrentTree = member
-            val disambiguator = overloads.disambiguator(name.value)
-            withOwner() {
-              method(name, disambiguator, kind, 0)
-              enterTypeParameters(tparams)
-              enterTermParameters(paramss, isPrimaryCtor = false)
-            }
-            myCurrentTree = old
-          }
           t.stats.foreach {
             case t: Ctor.Secondary =>
-              disambiguatedMethod(t, t.name, Nil, t.paramss, Kind.CONSTRUCTOR)
+              disambiguatedMethod(
+                t,
+                t.name,
+                Nil,
+                t.paramss,
+                Kind.CONSTRUCTOR,
+                overloads
+              )
             case t: Defn.Def =>
-              disambiguatedMethod(t, t.name, t.tparams, t.paramss, Kind.METHOD)
+              disambiguatedMethod(
+                t,
+                t.name,
+                t.tparams,
+                t.paramss,
+                Kind.METHOD,
+                overloads
+              )
             case t: Decl.Def =>
-              disambiguatedMethod(t, t.name, t.tparams, t.paramss, Kind.METHOD)
+              disambiguatedMethod(
+                t,
+                t.name,
+                t.tparams,
+                t.paramss,
+                Kind.METHOD,
+                overloads
+              )
+            case t: Decl.Given =>
+              disambiguatedMethod(
+                t,
+                t.name,
+                t.tparams,
+                List.empty,
+                Kind.METHOD,
+                overloads
+              )
             case _ =>
           }
           continue()
@@ -160,20 +202,146 @@ class ScalaMtags(val input: Input.VirtualFile)
         case t: Defn.Object =>
           term(t.name, Kind.OBJECT, 0); continue()
         case t: Defn.Type =>
-          tpe(t.name, Kind.TYPE, 0); stop()
-          enterTypeParameters(t.tparams)
+          withScala3Owner {
+            tpe(t.name, Kind.TYPE, 0); stop()
+            enterTypeParameters(t.tparams)
+          }
         case t: Decl.Type =>
           tpe(t.name, Kind.TYPE, 0); stop()
           enterTypeParameters(t.tparams)
         case t: Defn.Val =>
-          enterPatterns(t.pats, Kind.METHOD, Property.VAL.value); stop()
+          withScala3Owner {
+            enterPatterns(t.pats, Kind.METHOD, Property.VAL.value)
+            stop()
+          }
         case t: Decl.Val =>
           enterPatterns(t.pats, Kind.METHOD, Property.VAL.value); stop()
         case t: Defn.Var =>
-          enterPatterns(t.pats, Kind.METHOD, Property.VAR.value); stop()
+          withScala3Owner {
+            enterPatterns(t.pats, Kind.METHOD, Property.VAR.value); stop()
+          }
         case t: Decl.Var =>
-          enterPatterns(t.pats, Kind.METHOD, Property.VAR.value); stop()
+          withScala3Owner {
+            enterPatterns(t.pats, Kind.METHOD, Property.VAR.value); stop()
+          }
+        case t: Defn.Def =>
+          if (currentOwner.endsWith("/")) {
+            withOwner(scala3Owner) {
+              val disambiguator = toplevelOverloads.disambiguator(t.name.value)
+              method(t.name, disambiguator, Kind.METHOD, 0)
+              enterTypeParameters(t.tparams)
+              enterTermParameters(t.paramss, isPrimaryCtor = false)
+            }
+          }
+        case t: Defn.Enum =>
+          withOwner(currentOwner) {
+            tpe(t.name, Kind.CLASS, 0)
+            enterTypeParameters(t.tparams)
+            enterTermParameters(t.ctor.paramss, isPrimaryCtor = true)
+          }
+          term(t.name.value, t.name.pos, Kind.OBJECT, 0)
+          continue()
+        case t: Defn.RepeatedEnumCase =>
+          t.cases.foreach(c => withOwner(currentOwner)(term(c, Kind.OBJECT, 0)))
+        case t: Defn.EnumCase =>
+          term(t.name, Kind.OBJECT, 0)
+        case t: Defn.ExtensionGroup =>
+          // t.params are ignored - don't know which symbol/owner they should have
+          // need to wait for https://github.com/lampepfl/dotty/issues/11690
+          val (owner, overloads) =
+            if (currentOwner.endsWith("/"))
+              (s"$currentOwner$toplevelSourceOwner", toplevelOverloads)
+            else
+              (currentOwner, new OverloadDisambiguator())
+
+          def addDefnDef(t: Defn.Def): Unit =
+            withOwner(owner) {
+              disambiguatedMethod(
+                t,
+                t.name,
+                Nil,
+                t.paramss,
+                Kind.CONSTRUCTOR,
+                overloads
+              )
+            }
+          def addDeclDef(t: Decl.Def): Unit =
+            withOwner(owner) {
+              disambiguatedMethod(
+                t,
+                t.name,
+                Nil,
+                t.paramss,
+                Kind.CONSTRUCTOR,
+                overloads
+              )
+            }
+
+          t.body match {
+            case block: Term.Block =>
+              block.stats.foreach {
+                case d: Defn.Def => addDefnDef(d)
+                case d: Decl.Def => addDeclDef(d)
+                case _ =>
+              }
+            case d: Defn.Def => addDefnDef(d)
+            case d: Decl.Def => addDeclDef(d)
+            case _ =>
+          }
+        case t: Defn.GivenAlias =>
+          val nameOpt =
+            t.name match {
+              case Name.Anonymous() => givenTpeName(t.decltpe)
+              case _ => Some(t.name.value)
+            }
+          nameOpt.foreach { name =>
+            withScala3Owner {
+              term(name, t.name.pos, Kind.METHOD, Property.IMPLICIT.value)
+              continue()
+            }
+          }
+        case t: Defn.Given =>
+          val namePos =
+            t.name match {
+              case Name.Anonymous() =>
+                for {
+                  init <- t.templ.inits.headOption
+                  tpeName <- givenTpeName(init.tpe)
+                } yield (s"given_$tpeName", init.pos)
+              case _ =>
+                Some((t.name.value, t.name.pos))
+            }
+
+          namePos.foreach { case (name, pos) =>
+            withScala3Owner {
+              withOwner(owner) {
+                term(name, pos, Kind.METHOD, Property.IMPLICIT.value)
+                continue()
+              }
+            }
+          }
         case _ => stop()
       }
     }
+
+  /**
+   * Use sorce level package object as an owner for toplevel defition
+   */
+  private def withScala3Owner[A](f: => A): A =
+    withOwner(scala3Owner)(f)
+
+  private def scala3Owner: String =
+    if (currentOwner.endsWith("/"))
+      s"$currentOwner$toplevelSourceOwner"
+    else currentOwner
+
+  private def givenTpeName(t: Type): Option[String] = {
+    t match {
+      case t: Type.Name => Some(t.value)
+      case t: Type.Apply =>
+        val out = List(t.tpe, t.args.head).flatMap(givenTpeName).mkString("_")
+        Some(out)
+      case _ => None
+    }
+  }
 }
