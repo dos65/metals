@@ -12,7 +12,10 @@ final class Mtags {
   def totalLinesOfCode: Long = javaLines + scalaLines
   def totalLinesOfScala: Long = scalaLines
   def totalLinesOfJava: Long = javaLines
-  def toplevels(input: Input.VirtualFile): List[String] = {
+  def toplevels(
+      input: Input.VirtualFile,
+      dialect: Dialect = dialects.Scala213
+  ): List[String] = {
     val language = input.toLanguage
     if (language.isJava) {
       // NOTE(olafur): this is incorrect in the following cases:
@@ -24,11 +27,16 @@ final class Mtags {
       List(toplevelClass)
     } else if (language.isScala) {
       addLines(language, input.text)
-      new ScalaToplevelMtags(
-        input,
-        includeInnerClasses = false,
-        dialects.Scala213
-      )
+      val mtags =
+        if (dialect.allowSignificantIndentation)
+          new Scala3ToplevelMtags(input, includeInnerClasses = false, dialect)
+        else
+          new ScalaToplevelMtags(
+            input,
+            includeInnerClasses = false,
+            dialects.Scala213
+          )
+      mtags
         .index()
         .occurrences
         .iterator
@@ -93,22 +101,29 @@ object Mtags {
       .toList
   }
 
-  def allToplevels(input: Input.VirtualFile): TextDocument = {
+  def allToplevels(
+      input: Input.VirtualFile,
+      dialect: Dialect = dialects.Scala213
+  ): TextDocument = {
     input.toLanguage match {
       case Language.JAVA =>
         new JavaMtags(input).index()
       case Language.SCALA =>
-        new ScalaToplevelMtags(
-          input,
-          includeInnerClasses = true,
-          dialects.Scala213
-        ).index()
+        val mtags =
+          if (dialect.allowSignificantIndentation)
+            new Scala3ToplevelMtags(input, true, dialect)
+          else
+            new ScalaToplevelMtags(input, true, dialect)
+        mtags.index()
       case _ =>
         TextDocument()
     }
   }
-  def toplevels(input: Input.VirtualFile): List[String] = {
-    new Mtags().toplevels(input)
+  def toplevels(
+      input: Input.VirtualFile,
+      dialect: Dialect = dialects.Scala213
+  ): List[String] = {
+    new Mtags().toplevels(input, dialect)
   }
 
 }
