@@ -45,7 +45,13 @@ object Main {
     val systemIn = System.in
     val systemOut = System.out
     val tracePrinter = GlobalTrace.setup("LSP")
-    val exec = Executors.newCachedThreadPool()
+    val exec = Executors.newCachedThreadPool(new java.util.concurrent.ThreadFactory {
+      override def newThread(r: Runnable): Thread = { 
+        val t = Executors.defaultThreadFactory().newThread(r)
+        t.setName("Main")
+        t
+      }
+    })
     val ec = ExecutionContext.fromExecutorService(exec)
     val initialConfig = MetalsServerConfig.default
     val server = new MetalsLanguageServer(

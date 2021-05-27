@@ -10,7 +10,7 @@ import scala.meta.internal.pc.InterruptException
  * this thread, see CompilerJobQueue.
  */
 final class MetalsGlobalThread(var compiler: Global, name: String = "")
-    extends Thread("Scala Presentation Compiler [" + name + "]") {
+    extends Thread("Scala Presentation Compiler [" + name + "]" + compiler.hashCode()) {
 
   /**
    * The presentation compiler loop.

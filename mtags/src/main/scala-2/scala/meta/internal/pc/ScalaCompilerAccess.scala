@@ -30,7 +30,7 @@ class ScalaCompilerWrapper(global: MetalsGlobal)
   }
 
   override def stop(): Unit = {
-    global.presentationCompilerThread.stop()
+    global.presentationCompilerThread.interrupt()
   }
 
   override def presentationCompilerThread: Option[Thread] = {

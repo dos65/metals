@@ -12,7 +12,13 @@ import scala.util.control.NonFatal
 
 import scala.meta.pc.CancelToken
 import scala.meta.pc.PresentationCompilerConfig
+import java.nio.file.Files
+import java.nio.file.Paths
+import java.nio.file.StandardOpenOption
+import java.util.concurrent.atomic.AtomicReference
 
+
+class StopException extends Exception
 /**
  * Manages the lifecycle and multi-threaded access to the presentation compiler.
  *
@@ -29,15 +35,24 @@ abstract class CompilerAccess[Reporter, Compiler](
     Logger.getLogger(classOf[CompilerAccess[_, _]].getName)
 
   private val jobs = CompilerJobQueue()
+
+  private val shutdownFlag: AtomicBoolean = new AtomicBoolean(false)
+
+  @volatile
   private var _compiler: CompilerWrapper[Reporter, Compiler] = _
   private def isEmpty: Boolean = _compiler == null
   private def isDefined: Boolean = !isEmpty
   private def loadCompiler(): CompilerWrapper[Reporter, Compiler] = {
-    if (_compiler == null) {
-      _compiler = newCompiler()
+    if (shutdownFlag.get()) {
+      throw new StopException
+    } else {
+      if (_compiler == null) {
+        _compiler = newCompiler()
+        log(s"LOAD COMPLIER ${_compiler.compiler().hashCode()}")
+      }
+      _compiler.resetReporter()
+      _compiler
     }
-    _compiler.resetReporter()
-    _compiler
   }
 
   protected def newReporter: Reporter
@@ -49,19 +64,27 @@ abstract class CompilerAccess[Reporter, Compiler](
   def isLoaded(): Boolean = _compiler != null
 
   def shutdown(): Unit = {
+    shutdownFlag.set(true)
     shutdownCurrentCompiler()
     jobs.shutdown()
   }
 
+  def log(s: String): Unit = 
+    Files.write(Paths.get("/home/dos65/wtf_metals.log"), s"$s\n".getBytes(), StandardOpenOption.CREATE, StandardOpenOption.WRITE, StandardOpenOption.APPEND)
+
   def shutdownCurrentCompiler(): Unit = {
     val compiler = _compiler
+    log(s"TRY SHUTDOWN: ${if (compiler != null) compiler.hashCode else "null"}")
     if (compiler != null) {
       compiler.askShutdown()
+      log(s"SHUTDOWN CURRECT COMPILER: ${compiler.hashCode()}")
       _compiler = null
       sh.foreach { scheduler =>
         scheduler.schedule[Unit](
           () => {
-            if (compiler.isAlive()) {
+            val isAlive = compiler.isAlive()
+            if (isAlive) {
+              log(s"CALL STOP: ${compiler.hashCode()}")
               compiler.stop()
             }
           },
@@ -136,6 +159,7 @@ abstract class CompilerAccess[Reporter, Compiler](
     try {
       thunk(loadCompiler())
     } catch {
+      case _: StopException => default
       case InterruptException() =>
         default
       case other: Throwable =>

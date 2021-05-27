@@ -100,7 +100,13 @@ class MetalsLanguageServer(
     progressTicks: ProgressTicks = ProgressTicks.braille,
     bspGlobalDirectories: List[AbsolutePath] =
       BspServers.globalInstallDirectories,
-    sh: ScheduledExecutorService = Executors.newSingleThreadScheduledExecutor(),
+    sh: ScheduledExecutorService = Executors.newSingleThreadScheduledExecutor(new util.concurrent.ThreadFactory {
+      override def newThread(r: Runnable): Thread = { 
+        val t = Executors.defaultThreadFactory().newThread(r)
+        t.setName("MLS")
+        t
+      }
+    }),
     isReliableFileWatcher: Boolean = true
 ) extends Cancelable {
   ThreadPools.discardRejectedRunnables("MetalsLanguageServer.sh", sh)

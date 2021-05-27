@@ -6,6 +6,9 @@ import scala.tools.nsc.util.WorkScheduler
 import scala.util.control.NonFatal
 
 import scala.meta.internal.pc.MetalsGlobal
+import java.nio.file.Files
+import java.nio.file.Paths
+import java.nio.file.StandardOpenOption
 
 trait GlobalProxy { this: MetalsGlobal =>
   def presentationCompilerThread: Thread = this.compileRunner
@@ -33,6 +36,9 @@ trait GlobalProxy { this: MetalsGlobal =>
     }
   }
 
+  def log(s: String): Unit = 
+    Files.write(Paths.get("/home/dos65/wtf_metals.log"), s"$s\n".getBytes(), StandardOpenOption.CREATE, StandardOpenOption.WRITE, StandardOpenOption.APPEND)
+
   /**
    * Shuts down the default presentation compiler thread and replaces it with a custom implementation.
    */
@@ -54,6 +60,7 @@ trait GlobalProxy { this: MetalsGlobal =>
     compileRunner = new MetalsGlobalThread(this, "Metals")
     compileRunner.setDaemon(true)
     compileRunner.start()
+    log(s"HICJACK DONE: ${this.hashCode()}")
     compileRunner
   }
 }

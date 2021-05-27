@@ -51,7 +51,7 @@ class CompilerJobQueue(newExecutor: () => ThreadPoolExecutor) {
   def shutdown(): Unit = {
     val ex = myExecutor.get()
     if (ex != null) {
-      ex.shutdown()
+      ex.shutdownNow()
       myExecutor.compareAndSet(ex, null)
     }
   }
@@ -77,6 +77,16 @@ object CompilerJobQueue {
         /* keepAliveTime */ 0,
         /* unit */ TimeUnit.MILLISECONDS,
         /* workQueue */ new LastInFirstOutBlockingQueue
+      )
+      singleThreadExecutor.setThreadFactory(
+        new java.util.concurrent.ThreadFactory {
+          override def newThread(r: Runnable): Thread = { 
+            val t = ju.concurrent.Executors.defaultThreadFactory().newThread(r)
+            t.setName("CJQ")
+            t.setDaemon(true)
+            t
+          }
+        }
       )
       singleThreadExecutor.setRejectedExecutionHandler((r, _) => {
         r match {

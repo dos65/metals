@@ -265,7 +265,10 @@ class SbtBloopLspSuite
         client.messageRequests.peekLast(),
         UnsupportedScalaVersion.message(
           Set("2.12.4", "2.12.3", "2.11.8", "2.11.11", "2.10.7")
-        )
+
+
+
+          )
       )
       sourceJars <- server.buildTargetSourceJars("a")
       _ = assert(sourceJars.nonEmpty) // source jars should not be empty
