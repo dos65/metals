@@ -27,4 +27,14 @@ enum CompletionValue {
     case Compiler(v) => 3
     case Workspace(v) => 4
   }
+
+  def compareTo(other: CompletionValue): Int = {
+    (this, other) match {
+      case (NamedArg(a), NamedArg(b)) => 0
+      case (NamedArg(a), other) => ???
+      case (other, NamedArg(b)) => ???
+      case _ =>  ???
+    }
+    
+  }
 }

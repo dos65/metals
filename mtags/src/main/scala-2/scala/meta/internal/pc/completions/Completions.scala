@@ -32,7 +32,9 @@ trait Completions { this: MetalsGlobal =>
       extends ScopeMember(sym, NoType, true, EmptyTree)
 
   class NamedArgMember(sym: Symbol)
-      extends ScopeMember(sym, NoType, true, EmptyTree)
+      extends ScopeMember(sym, NoType, true, EmptyTree) {
+        override def toString: String = s"NAMED${super.toString()}"
+      }
 
   class TextEditMember(
       val filterText: String,
@@ -183,7 +185,10 @@ trait Completions { this: MetalsGlobal =>
       }
       override def compare(o1: Member, o2: Member): Int = {
         val byCompletion = completion.compare(o1, o2)
-        if (byCompletion != 0) byCompletion
+        if (byCompletion != 0) {
+          println(s"BY COMPLETION: $byCompletion $o1 $o2")
+          byCompletion
+        }
         else {
           val byLocalSymbol = compareLocalSymbols(o1, o2)
           if (byLocalSymbol != 0) byLocalSymbol

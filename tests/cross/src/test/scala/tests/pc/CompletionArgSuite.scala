@@ -22,7 +22,7 @@ class CompletionArgSuite extends BaseCompletionSuite {
   )
 
   check(
-    "arg1",
+    "arg1".only,
     s"""|object Main {
         |  assert(assertion = true, @@)
         |}
@@ -266,8 +266,8 @@ class CompletionArgSuite extends BaseCompletionSuite {
     topLines = Some(3),
     compat = Map(
       "3.0" ->
-        """|argument = : Int
-           |argument: Int
+        """|argument: Int
+           |argument = : Int
            |""".stripMargin
     )
   )

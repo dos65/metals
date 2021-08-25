@@ -172,46 +172,50 @@ class CompletionProvider(
   private def computeRelevancePenalty(
       completion: CompletionValue
   ): Int = {
-    import MemberOrdering._
-    var relevance = 0
     val sym = completion.value.sym
+    def symbolRelevance: Int = {
+      import MemberOrdering._
+      var relevance = 0
 
-    def hasGetter = try {
-      def isModuleOrClass = sym.is(Module) || sym.isClass
-      // isField returns true for some classes
-      def isJavaClass = sym.is(JavaDefined) && isModuleOrClass
-      (sym.isField && !isJavaClass && !isModuleOrClass) || sym.getter != NoSymbol
-    } catch {
-      case _ => false
+      def hasGetter = try {
+        def isModuleOrClass = sym.is(Module) || sym.isClass
+        // isField returns true for some classes
+        def isJavaClass = sym.is(JavaDefined) && isModuleOrClass
+        (sym.isField && !isJavaClass && !isModuleOrClass) || sym.getter != NoSymbol
+      } catch {
+        case _ => false
+      }
+
+      // local symbols are more relevant
+      if (!sym.isLocalToBlock) relevance |= IsNotLocalByBlock
+      // symbols defined in this file are more relevant
+      if (pos.source != sym.source || sym.is(Package))
+        relevance |= IsNotDefinedInFile
+      // fields are more relevant than non fields
+      if (!hasGetter) relevance |= IsNotGetter
+      // symbols whose owner is a base class are less relevant
+      if (sym.owner == defn.AnyClass || sym.owner == defn.ObjectClass)
+        relevance |= IsInheritedBaseMethod
+      // symbols not provided via an implicit are more relevant
+      if (sym.is(Implicit)) relevance |= IsImplicitConversion
+      if (sym.is(Package)) relevance |= IsPackage
+      // accessors of case class members are more relevant
+      if (!sym.is(CaseAccessor)) relevance |= IsNotCaseAccessor
+      // public symbols are more relevant
+      if (!sym.isPublic) relevance |= IsNotCaseAccessor
+      // synthetic symbols are less relevant (e.g. `copy` on case classes)
+      if (sym.is(Synthetic)) relevance |= IsSynthetic
+      if (sym.isDeprecated) relevance |= IsDeprecated
+      if (isEvilMethod(sym.name)) relevance |= IsEvilMethod
+      relevance
     }
 
-    // local symbols are more relevant
-    if (!sym.isLocalToBlock) relevance |= IsNotLocalByBlock
-    // symbols defined in this file are more relevant
-    if (pos.source != sym.source || sym.is(Package))
-      relevance |= IsNotDefinedInFile
-    // fields are more relevant than non fields
-    if (!hasGetter) relevance |= IsNotGetter
-    // symbols whose owner is a base class are less relevant
-    if (sym.owner == defn.AnyClass || sym.owner == defn.ObjectClass)
-      relevance |= IsInheritedBaseMethod
-    // symbols not provided via an implicit are more relevant
-    if (sym.is(Implicit)) relevance |= IsImplicitConversion
-    if (sym.is(Package)) relevance |= IsPackage
-    // accessors of case class members are more relevant
-    if (!sym.is(CaseAccessor)) relevance |= IsNotCaseAccessor
-    // public symbols are more relevant
-    if (!sym.isPublic) relevance |= IsNotCaseAccessor
-    // synthetic symbols are less relevant (e.g. `copy` on case classes)
-    if (sym.is(Synthetic)) relevance |= IsSynthetic
-    if (sym.isDeprecated) relevance |= IsDeprecated
-    if (isEvilMethod(sym.name)) relevance |= IsEvilMethod
     completion match {
-      case CompletionValue.Workspace(_) =>
-        relevance |= (IsWorkspaceSymbol + sym.name.show.length)
-      case _ =>
+      case _: CompletionValue.Workspace =>
+        MemberOrdering.IsWorkspaceSymbol + sym.name.show.length
+      case _: CompletionValue.Scope => symbolRelevance
+      case _ => Int.MaxValue
     }
-    relevance
   }
 
   private lazy val isEvilMethod: Set[Name] = Set[Name](
@@ -251,7 +255,8 @@ class CompletionProvider(
         )
       }
       override def compare(o1: CompletionValue, o2: CompletionValue): Int = {
-        val byCompletion = o1.priority - o2.priority
+        //val byCompletion = o1.priority - o2.priority
+        val byCompletion = 0
         if (byCompletion != 0) byCompletion
         else {
           val s1 = o1.value.sym
@@ -263,6 +268,7 @@ class CompletionProvider(
               computeRelevancePenalty(o1),
               computeRelevancePenalty(o2)
             )
+            //println(s"byRelevance: ${o1}=${computeRelevancePenalty(o1)} / ${o2}=${computeRelevancePenalty(o2)}")
             if (byRelevance != 0) byRelevance
             else {
               val byFuzzy = Integer.compare(
