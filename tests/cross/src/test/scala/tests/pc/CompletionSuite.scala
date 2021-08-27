@@ -1273,13 +1273,21 @@ class CompletionSuite extends BaseCompletionSuite {
        |""".stripMargin
   )
 
-  checkItems(
-    "scope-completions-empty-query",
+  check(
+    "scope-completions-empty-query".only,
     s"""|class Foo {
+        |  val something = 1
+        |
         |  @@
         |}
         |""".stripMargin,
-    _.nonEmpty
+    """|bar: Int
+       |Foo `scope-completions-empty-query`
+       |:: scala.collection.immutable
+       |:+ scala.collection
+       |-> scala
+       |""".stripMargin,
+    topLines = Some(5)
   )
 
   checkEdit(

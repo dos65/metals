@@ -58,13 +58,9 @@ class CompletionProvider(
     val query = completionPos.query
     completionPos.kind match {
       case CompletionKind.Empty =>
-        val filtered = indexedContext.scopeSymbols.flatMap(sym =>
-          if (sym.isRealMethod) Some(sym).filter(!_.isConstructor)
-          else if (sym.isClass || sym.is(Module)) Some(sym)
-          else if (sym.isType) Option(sym.companionModule).filter(_ != NoSymbol)
-          else if (sym.isPackageObject) Some(sym)
-          else None
-        )
+        val filtered = indexedContext.scopeSymbols
+          .filter(sym => !sym.is(Synthetic) && !sym.isConstructor)
+
         filtered.map { sym =>
           val completion =
             Completion(sym.decodedName, description(sym), List(sym))
@@ -121,7 +117,12 @@ class CompletionProvider(
           case _: CompletionValue.NamedArg =>
             sym.detailString + "="
           case _ =>
-            sym.detailString
+            val name = SemanticdbSymbols.symbolName(sym)
+            if (sym.isClass || sym.is(Module))
+              // drop #|. at the end to avoid duplication
+              name.substring(0, name.length - 1)
+            else
+              name
         }
         def isNotLocalForwardReference: Boolean =
           !sym.isLocalToBlock ||
@@ -184,11 +185,11 @@ class CompletionProvider(
     } catch {
       case _ => false
     }
-
-    // local symbols are more relevant
-    if (!sym.isLocalToBlock) relevance |= IsNotLocalByBlock
     // symbols defined in this file are more relevant
-    if (pos.source != sym.source || sym.is(Package))
+    if (
+      (pos.source != sym.source || sym.is(Package)) && !completion
+        .isInstanceOf[CompletionValue.NamedArg]
+    )
       relevance |= IsNotDefinedInFile
     // fields are more relevant than non fields
     if (!hasGetter) relevance |= IsNotGetter
@@ -250,46 +251,47 @@ class CompletionProvider(
           }
         )
       }
+
       override def compare(o1: CompletionValue, o2: CompletionValue): Int = {
-        val byCompletion = o1.priority - o2.priority
-        if (byCompletion != 0) byCompletion
+        val s1 = o1.value.sym
+        val s2 = o2.value.sym
+        val debug =
+          List(s1, s2).find(_.name.show.contains("something")).isDefined
+        if (debug) println(s"AAAA $s1 $s2")
+        val byLocalSymbol = compareLocalSymbols(o1, o2)
+        if (byLocalSymbol != 0) byLocalSymbol
         else {
-          val s1 = o1.value.sym
-          val s2 = o2.value.sym
-          val byLocalSymbol = compareLocalSymbols(o1, o2)
-          if (byLocalSymbol != 0) byLocalSymbol
-          else {
-            val byRelevance = Integer.compare(
-              computeRelevancePenalty(o1),
-              computeRelevancePenalty(o2)
+          val byRelevance = Integer.compare(
+            computeRelevancePenalty(o1),
+            computeRelevancePenalty(o2)
+          )
+          if (byRelevance != 0) {
+            byRelevance
+          } else {
+            val byFuzzy = Integer.compare(
+              fuzzyScore(s1),
+              fuzzyScore(s2)
             )
-            if (byRelevance != 0) byRelevance
+            if (byFuzzy != 0) byFuzzy
             else {
-              val byFuzzy = Integer.compare(
-                fuzzyScore(s1),
-                fuzzyScore(s2)
+              val byIdentifier = IdentifierComparator.compare(
+                s1.name.show,
+                s2.name.show
               )
-              if (byFuzzy != 0) byFuzzy
+              if (byIdentifier != 0) byIdentifier
               else {
-                val byIdentifier = IdentifierComparator.compare(
-                  s1.name.toString,
-                  s2.name.toString
-                )
-                if (byIdentifier != 0) byIdentifier
+                val byOwner =
+                  s1.owner.fullName.toString
+                    .compareTo(s2.owner.fullName.toString)
+                if (byOwner != 0) byOwner
                 else {
-                  val byOwner =
-                    s1.owner.fullName.toString
-                      .compareTo(s2.owner.fullName.toString)
-                  if (byOwner != 0) byOwner
+                  val byParamCount = Integer.compare(
+                    s1.typeParams.size,
+                    s2.typeParams.size
+                  )
+                  if (byParamCount != 0) byParamCount
                   else {
-                    val byParamCount = Integer.compare(
-                      s1.typeParams.size,
-                      s2.typeParams.size
-                    )
-                    if (byParamCount != 0) byParamCount
-                    else {
-                      s1.detailString.compareTo(s2.detailString)
-                    }
+                    s1.detailString.compareTo(s2.detailString)
                   }
                 }
               }

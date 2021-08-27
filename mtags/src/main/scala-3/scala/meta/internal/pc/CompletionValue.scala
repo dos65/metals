@@ -20,11 +20,4 @@ enum CompletionValue {
     case NamedArg(v) => v
     case Scope(v) => v
   }
-
-  def priority: Int = this match {
-    case NamedArg(v) => 1
-    case Scope(v) => 2
-    case Compiler(v) => 3
-    case Workspace(v) => 4
-  }
 }

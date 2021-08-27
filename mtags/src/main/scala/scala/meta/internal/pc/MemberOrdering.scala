@@ -17,4 +17,24 @@ object MemberOrdering {
 
   // OverrideDefMember
   val IsNotAbstract: Int = 1 << 30
+
+  def showFlags(value: Int): String = {
+    List(
+      (IsWorkspaceSymbol, "workspaceSymbol"),
+      (IsInheritedBaseMethod, "inheritedBaseMethod"),
+      (IsImplicitConversion, "implicitConvertion"),
+      (IsInherited, "inherited"),
+      (IsNotLocalByBlock, "notLocalByBlock"),
+      (IsNotDefinedInFile, "notDefinedInFile"),
+      (IsNotGetter, "notGetter"),
+      (IsPackage, "package"),
+      (IsNotCaseAccessor, "notCaseAccessor"),
+      (IsNotPublic, "notPublic"),
+      (IsSynthetic, "synthetic"),
+      (IsDeprecated, "deprecated"),
+      (IsEvilMethod, "evilMethod"),
+      (IsNotAbstract, "notAbstract")
+    ).collect { case (i, name) if (value & i) > 0 => name }
+      .mkString(", ")
+  }
 }
