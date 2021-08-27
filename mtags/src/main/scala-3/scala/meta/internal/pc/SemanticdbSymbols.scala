@@ -83,9 +83,15 @@ object SemanticdbSymbols {
 
   /** The semanticdb name of the given symbol */
   def symbolName(sym: Symbol)(using Context): String =
-    val b = StringBuilder(20)
-    addSymName(b, sym)
-    b.toString
+    try {
+      val b = StringBuilder(20)
+      addSymName(b, sym)
+      b.toString
+    } catch {
+      case e: Throwable =>
+        println(s"WHAT: ${sym}")
+        throw e
+    }
 
   /**
    *  Taken from https://github.com/lampepfl/dotty/blob/2db43dae1480825227eb30d291b0dd0f0494e0f6/compiler/src/dotty/tools/dotc/semanticdb/ExtractSemanticDB.scala#L293
@@ -140,7 +146,9 @@ object SemanticdbSymbols {
           b.append('('); addOverloadIdx(sym); b.append(").")
         else b.append('.')
 
-    addOwner(sym.owner); addDescriptor(sym)
+    if (!sym.isRoot)
+      addOwner(sym.owner)
+    addDescriptor(sym)
   end addSymName
 
 }

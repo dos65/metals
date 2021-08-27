@@ -18,17 +18,34 @@ import dotty.tools.dotc.core.Names.Name
 import dotty.tools.dotc.core.Symbols.Symbol
 import dotty.tools.dotc.interactive.Completion
 import dotty.tools.dotc.util.SourcePosition
+import dotty.tools.dotc.core.Denotations.MultiDenotation
+import dotty.tools.dotc.core.Symbols.NoSymbol
 
 trait Completions {
+
   def namedArgCompletions(
       pos: SourcePosition,
-      path: List[Tree]
+      path: List[Tree],
+      indexed: IndexedContext
   )(using ctx: Context): List[CompletionValue] = {
+
     path match {
       case (ident: Ident) :: (app: Apply) :: _ => // fun(arg@@)
-        ArgCompletion(Some(ident), app, pos).contribute
+        ArgCompletion(app, app.fun.symbol, Some(ident), pos).contribute
       case (app: Apply) :: _ => // fun(@@)
-        ArgCompletion(None, app, pos).contribute
+        val sym =
+          if (app.fun.symbol == NoSymbol) {
+            val symbols = indexed.symbolsFromErroredTree(app.fun)
+            // as there is no params - select method with a minimal amount of paramters
+            symbols
+              .minByOption(sym =>
+                sym.paramSymss.headOption.map(_.size).getOrElse(0)
+              )
+              .headOption
+              .getOrElse(NoSymbol)
+          } else app.fun.symbol
+
+        ArgCompletion(app, sym, None, pos).contribute
       case _ =>
         Nil
     }
@@ -36,12 +53,11 @@ trait Completions {
 }
 
 case class ArgCompletion(
-    ident: Option[Ident],
     apply: Apply,
+    methodSym: Symbol,
+    ident: Option[Ident],
     pos: SourcePosition
 )(using ctx: Context) {
-  val method = apply.fun
-  val methodSym = method.symbol
 
   // paramSymss contains both type params and value params
   val vparamss =

@@ -299,6 +299,20 @@ class CompletionProvider(
           }
         }
 
+      val pass =
+        !isSeen(id) &&
+          !isUninterestingSymbol(head.sym) &&
+          !isUninterestingSymbolOwner(head.sym.owner) &&
+          !isIgnoredWorkspace &&
+          !isFileAmmoniteCompletion() &&
+          completion.isCandidate(head) &&
+          !head.sym.name.containsName(CURSOR) &&
+          isNotLocalForwardReference
+      if (id.contains("::")) {
+        println("!!!!!!!!!!!!")
+        println(s"$head  , $id, $pass")
+        println("!!!!!!!!!!!!")
+      }
       if (
         !isSeen(id) &&
         !isUninterestingSymbol(head.sym) &&

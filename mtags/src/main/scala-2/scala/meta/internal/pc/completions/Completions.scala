@@ -33,8 +33,8 @@ trait Completions { this: MetalsGlobal =>
 
   class NamedArgMember(sym: Symbol)
       extends ScopeMember(sym, NoType, true, EmptyTree) {
-        override def toString: String = s"NAMED${super.toString()}"
-      }
+    override def toString: String = s"NAMED${super.toString()}"
+  }
 
   class TextEditMember(
       val filterText: String,
@@ -183,34 +183,54 @@ trait Completions { this: MetalsGlobal =>
           }
         )
       }
+      val target = Set(":+", "::")
       override def compare(o1: Member, o2: Member): Int = {
+        val debug = target.contains(o1.sym.nameString) && target.contains(
+          o2.sym.nameString
+        )
+        if (debug) println(s"${o1.sym} --- ${o2.sym}")
         val byCompletion = completion.compare(o1, o2)
         if (byCompletion != 0) {
-          println(s"BY COMPLETION: $byCompletion $o1 $o2")
+          if (debug) println(s"BY COMPL ${byCompletion}")
           byCompletion
-        }
-        else {
+        } else {
           val byLocalSymbol = compareLocalSymbols(o1, o2)
-          if (byLocalSymbol != 0) byLocalSymbol
-          else {
+          if (byLocalSymbol != 0) {
+            if (debug) println(s"BY LOCAL ${byLocalSymbol}")
+            byLocalSymbol
+          } else {
             val byRelevance = Integer.compare(
               relevancePenalty(o1),
               relevancePenalty(o2)
             )
-            if (byRelevance != 0) byRelevance
-            else {
+            if (byRelevance != 0) {
+              if (debug)
+                println(s"BY RELEVANCE ${byRelevance} // ${relevancePenalty(o1)} ${MemberOrdering
+                  .showFlags(relevancePenalty(o1))} ---- ${relevancePenalty(o2)} ${MemberOrdering
+                  .showFlags(relevancePenalty(o2))}")
+              byRelevance
+            } else {
               val byFuzzy =
                 java.lang.Integer.compare(fuzzyScore(o1), fuzzyScore(o2))
-              if (byFuzzy != 0) byFuzzy
-              else {
+              if (byFuzzy != 0) {
+                if (debug) println(s"BY FUZZY ${byFuzzy}")
+                byFuzzy
+              } else {
                 val byIdentifier =
                   IdentifierComparator.compare(o1.sym.name, o2.sym.name)
-                if (byIdentifier != 0) byIdentifier
-                else {
+                if (byIdentifier != 0) {
+                  if (debug)
+                    println(
+                      s"BY ID ${byIdentifier} ${o1.sym.name.toChars.toList.mkString} ${o2.sym.name.toChars.toList.mkString}"
+                    )
+                  byIdentifier
+                } else {
                   val byOwner =
                     o1.sym.owner.fullName.compareTo(o2.sym.owner.fullName)
-                  if (byOwner != 0) byOwner
-                  else {
+                  if (byOwner != 0) {
+                    if (debug) println(s"BY OWNER ${byOwner}")
+                    byOwner
+                  } else {
                     val byParamCount = Integer.compare(
                       o1.sym.paramss.iterator.flatten.size,
                       o2.sym.paramss.iterator.flatten.size

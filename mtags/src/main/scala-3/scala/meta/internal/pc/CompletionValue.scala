@@ -33,8 +33,8 @@ enum CompletionValue {
       case (NamedArg(a), NamedArg(b)) => 0
       case (NamedArg(a), other) => ???
       case (other, NamedArg(b)) => ???
-      case _ =>  ???
+      case _ => ???
     }
-    
+
   }
 }

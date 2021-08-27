@@ -5,12 +5,16 @@ import scala.annotation.tailrec
 import scala.meta.internal.mtags.MtagsEnrichments._
 import scala.meta.internal.pc.IndexedContext.Result
 
+import dotty.tools.dotc.ast.tpd._
 import dotty.tools.dotc.core.Contexts._
 import dotty.tools.dotc.core.Flags._
 import dotty.tools.dotc.core.Names._
 import dotty.tools.dotc.core.Symbols._
 import dotty.tools.dotc.core.Types._
 import dotty.tools.dotc.typer.ImportInfo
+import dotty.tools.dotc.core.Denotations.PreDenotation
+import dotty.tools.dotc.core.Denotations.MultiPreDenotation
+import dotty.tools.dotc.core.Denotations.Denotation
 
 sealed trait IndexedContext {
   given ctx: Context
@@ -59,6 +63,29 @@ sealed trait IndexedContext {
         case _ => false
       }
     else toplevelClashes(sym.owner)
+  }
+
+  /**
+   *  Recovers symbols for incomplete Ident/Select tree that refers to overloaded symbol
+   */
+  final def symbolsFromErroredTree(t: Tree): List[Symbol] = {
+
+    def extractSymbols(d: PreDenotation): List[Symbol] = {
+      d match {
+        case multi: MultiPreDenotation =>
+          extractSymbols(multi.denot1) ++ extractSymbols(multi.denot2)
+        case d: Denotation => List(d.symbol)
+        case _ => List.empty
+      }
+    }
+
+    t match {
+      case select: Select =>
+        extractSymbols(select.qualifier.typeOpt.member(select.name))
+          .filter(_ != NoSymbol)
+      case ident: Ident => findSymbol(ident.name).toList.flatten
+      case _ => Nil
+    }
   }
 
 }

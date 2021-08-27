@@ -92,15 +92,21 @@ class SymbolPrinter(using ctx: Context) extends RefinedPrinter(ctx) {
     val info = sym.info.widenTermRefExpr
     val typeSymbol = info.typeSymbol
 
-    if (sym.is(Flags.Package) || sym.isClass) " " + fullNameString(sym.owner)
-    else if (sym.is(Flags.Module) || typeSymbol.is(Flags.Module))
-      " " + fullNameString(typeSymbol.owner)
-    else if (sym.is(Flags.Method))
-      defaultMethodSignature(sym, history, info, onlyMethodParams = true)
-    else {
-      val short = shortType(info, history)
-      typeString(short)
-    }
+    val out =
+      if (sym.is(Flags.Package) || sym.isClass) " " + sym.owner.printFullName
+      else if (sym.is(Flags.Module) || typeSymbol.is(Flags.Module))
+        " " + typeSymbol.owner.printFullName
+      else if (sym.is(Flags.Method))
+        defaultMethodSignature(sym, history, info, onlyMethodParams = true)
+      else {
+        val short = shortType(info, history)
+        typeString(short)
+      }
+    if (out.contains("scala.collection.package"))
+      println("HHHHHHHHHHHHHHHHHHHHH")
+      println(s"$sym '${out}' ${sym.flagsString}")
+      println("HHHHHHHHHHHHHHHHHHHHH")
+    out
 
   }
 

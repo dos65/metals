@@ -17,6 +17,7 @@ import dotty.tools.dotc.interactive.InteractiveDriver
 import dotty.tools.dotc.util.SourcePosition
 import dotty.tools.dotc.util.Spans
 import org.eclipse.{lsp4j => l}
+import scala.meta.internal.pc.IndexedContext
 
 object MtagsEnrichments extends CommonMtagsEnrichments {
 
@@ -66,18 +67,24 @@ object MtagsEnrichments extends CommonMtagsEnrichments {
     }
 
   extension (sym: Symbol)(using Context) {
-    def fullNameBackticked: String = {
+    private def fullName0(needBackticks: Boolean): String = {
       @tailrec
       def loop(acc: List[String], sym: Symbol): List[String] = {
         if (sym == NoSymbol || sym.isRoot || sym.isEmptyPackage) acc
         else if (sym.isPackageObject) loop(acc, sym.owner)
         else {
-          val v = KeywordWrapper.Scala3.backtickWrap(sym.decodedName)
-          loop(v :: acc, sym.owner)
+          val name = sym.decodedName
+          val value =
+            if (needBackticks) KeywordWrapper.Scala3.backtickWrap(name)
+            else name
+          loop(value :: acc, sym.owner)
         }
       }
       loop(Nil, sym).mkString(".")
     }
+
+    def printFullName: String = fullName0(needBackticks = false)
+    def fullNameBackticked: String = fullName0(needBackticks = true)
 
     def decodedName: String = sym.name.decoded
 

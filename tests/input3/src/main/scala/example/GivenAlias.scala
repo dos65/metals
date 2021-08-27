@@ -11,3 +11,9 @@ object X {
   given Double = 4.0
   val double = given_Double
 }
+
+trait Z[A]:
+  def doZ: List[A]
+
+given [T]: Z[T] with 
+  def doZ: List[T] = Nil

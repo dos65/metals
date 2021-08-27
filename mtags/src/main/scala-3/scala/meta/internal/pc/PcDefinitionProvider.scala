@@ -145,35 +145,11 @@ class PcDefinitionProvider(
         if (head.symbol.is(Synthetic)) enclosingSymbols(tl, pos, indexed)
         else if (head.symbol != NoSymbol) List(head.symbol)
         else {
-          val recovered = recoverError(head, indexed)
+          val recovered = indexed.symbolsFromErroredTree(head)
           if (recovered.isEmpty) enclosingSymbols(tl, pos, indexed)
           else recovered
         }
       case Nil => Nil
-    }
-  }
-
-  private def recoverError(
-      tree: Tree,
-      indexed: IndexedContext
-  ): List[Symbol] = {
-    import indexed.ctx
-
-    def extractSymbols(d: PreDenotation): List[Symbol] = {
-      d match {
-        case multi: MultiPreDenotation =>
-          extractSymbols(multi.denot1) ++ extractSymbols(multi.denot2)
-        case d: Denotation => List(d.symbol)
-        case _ => List.empty
-      }
-    }
-
-    tree match {
-      case select: Select =>
-        extractSymbols(select.qualifier.typeOpt.member(select.name))
-          .filter(_ != NoSymbol)
-      case ident: Ident => indexed.findSymbol(ident.name).toList.flatten
-      case _ => Nil
     }
   }
 

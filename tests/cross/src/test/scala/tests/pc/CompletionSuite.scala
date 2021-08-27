@@ -391,10 +391,10 @@ class CompletionSuite extends BaseCompletionSuite {
                    |JavaConversions - scala.collection
                    |JavaConversions - scala.concurrent
                    |""".stripMargin,
-      "3" -> """|AsJavaConverters - scala.collection.convert
-                |JavaConverters - scala.collection
-                |JavaConversions - scala.concurrent
+      "3" -> """|JavaConverters - scala.collection
                 |AsJavaConsumer - scala.jdk.FunctionWrappers
+                |JavaConversions - scala.concurrent
+                |AsJavaConverters - scala.collection.convert
                 |FromJavaConsumer - scala.jdk.FunctionWrappers
                 |AsJavaBiConsumer - scala.jdk.FunctionWrappers
                 |AsJavaIntConsumer - scala.jdk.FunctionWrappers

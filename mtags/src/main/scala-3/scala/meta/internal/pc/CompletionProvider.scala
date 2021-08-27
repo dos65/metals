@@ -40,7 +40,7 @@ class CompletionProvider(
 
     val (completions, result) =
       compilerCompletions.map(CompletionValue.Compiler(_)).filterInteresting()
-    val args = Completions.namedArgCompletions(pos, path)
+    val args = Completions.namedArgCompletions(pos, path, indexedContext)
 
     val values =
       (completions ++ args).sorted(completionOrdering)
@@ -58,13 +58,10 @@ class CompletionProvider(
     val query = completionPos.query
     completionPos.kind match {
       case CompletionKind.Empty =>
-        val filtered = indexedContext.scopeSymbols.flatMap(sym =>
-          if (sym.isRealMethod) Some(sym).filter(!_.isConstructor)
-          else if (sym.isClass || sym.is(Module)) Some(sym)
-          else if (sym.isType) Option(sym.companionModule).filter(_ != NoSymbol)
-          else if (sym.isPackageObject) Some(sym)
-          else None
-        )
+        val filtered = indexedContext.scopeSymbols.filter { sym =>
+          val ignoredMethod = sym.isConstructor
+          !ignoredMethod && !sym.is(Synthetic)
+        }
         filtered.map { sym =>
           val completion =
             Completion(sym.decodedName, description(sym), List(sym))
@@ -121,7 +118,7 @@ class CompletionProvider(
           case _: CompletionValue.NamedArg =>
             sym.detailString + "="
           case _ =>
-            sym.detailString
+            SemanticdbSymbols.symbolName(sym)
         }
         def isNotLocalForwardReference: Boolean =
           !sym.isLocalToBlock ||
@@ -172,9 +169,9 @@ class CompletionProvider(
   private def computeRelevancePenalty(
       completion: CompletionValue
   ): Int = {
+    import MemberOrdering._
     val sym = completion.value.sym
-    def symbolRelevance: Int = {
-      import MemberOrdering._
+    def symbolRelevance(isNamedArg: Boolean): Int = {
       var relevance = 0
 
       def hasGetter = try {
@@ -186,10 +183,8 @@ class CompletionProvider(
         case _ => false
       }
 
-      // local symbols are more relevant
-      if (!sym.isLocalToBlock) relevance |= IsNotLocalByBlock
       // symbols defined in this file are more relevant
-      if (pos.source != sym.source || sym.is(Package))
+      if (!isNamedArg && (pos.source != sym.source || sym.is(Package)))
         relevance |= IsNotDefinedInFile
       // fields are more relevant than non fields
       if (!hasGetter) relevance |= IsNotGetter
@@ -213,8 +208,10 @@ class CompletionProvider(
     completion match {
       case _: CompletionValue.Workspace =>
         MemberOrdering.IsWorkspaceSymbol + sym.name.show.length
-      case _: CompletionValue.Scope => symbolRelevance
-      case _ => Int.MaxValue
+      case _: CompletionValue.NamedArg =>
+        symbolRelevance(true) // | IsNamedArg
+      // case _: CompletionValue.Scope => symbolRelevance
+      case _ => symbolRelevance(false)
     }
   }
 
@@ -254,35 +251,56 @@ class CompletionProvider(
           }
         )
       }
+
+      //val target = Set(":+", "::")
+      val target = Set.empty
       override def compare(o1: CompletionValue, o2: CompletionValue): Int = {
         //val byCompletion = o1.priority - o2.priority
+        val debug =
+          false //target.contains(o1.value.sym.name.stripModuleClassSuffix.show) && target.contains(o2.value.sym.name.stripModuleClassSuffix.show)
+        if (debug)
+          println(
+            s"${o1.value.sym} ${o1.value.sym.showFullName} --- ${o2.value.sym} ${o2.value.sym.showFullName}"
+          )
         val byCompletion = 0
         if (byCompletion != 0) byCompletion
         else {
           val s1 = o1.value.sym
           val s2 = o2.value.sym
           val byLocalSymbol = compareLocalSymbols(o1, o2)
-          if (byLocalSymbol != 0) byLocalSymbol
-          else {
+          if (byLocalSymbol != 0) {
+            if (debug) println("BY LOCAL")
+            byLocalSymbol
+          } else {
+            val rel1 = computeRelevancePenalty(o1)
+            val rel2 = computeRelevancePenalty(o2)
             val byRelevance = Integer.compare(
-              computeRelevancePenalty(o1),
-              computeRelevancePenalty(o2)
+              rel1,
+              rel2
             )
-            //println(s"byRelevance: ${o1}=${computeRelevancePenalty(o1)} / ${o2}=${computeRelevancePenalty(o2)}")
+            if (debug)
+              println(
+                s"byRelevance: ${o1} ${s1.owner}=${rel1} ${MemberOrdering
+                  .showFlags(rel1)} / ${o2}${s2.owner} ${rel2} ${MemberOrdering.showFlags(rel2)}"
+              )
             if (byRelevance != 0) byRelevance
             else {
               val byFuzzy = Integer.compare(
                 fuzzyScore(s1),
                 fuzzyScore(s2)
               )
-              if (byFuzzy != 0) byFuzzy
-              else {
+              if (byFuzzy != 0) {
+                if (debug) println("byFuzzy")
+                byFuzzy
+              } else {
                 val byIdentifier = IdentifierComparator.compare(
-                  s1.name.toString,
-                  s2.name.toString
+                  s1.name.show,
+                  s2.name.show
                 )
-                if (byIdentifier != 0) byIdentifier
-                else {
+                if (byIdentifier != 0) {
+                  if (debug) println(s"byIdent ${s1} ${s2} $byIdentifier")
+                  byIdentifier
+                } else {
                   val byOwner =
                     s1.owner.fullName.toString
                       .compareTo(s2.owner.fullName.toString)

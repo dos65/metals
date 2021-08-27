@@ -4,12 +4,8 @@ import tests.BaseCompletionSuite
 
 class CompletionArgSuite extends BaseCompletionSuite {
 
-  // In scala3, we get NoSymbol for `assert`, so we get no completions here.
-  // This might be because the `assert` method has multiple overloaded methods, and that's why we can't retrieve a specfic symbol.
-  // Might be good to fixed in Dotty.
-  // see: https://github.com/scalameta/metals/pull/2369
   check(
-    "arg".tag(IgnoreScala3),
+    "arg",
     s"""|object Main {
         |  assert(@@)
         |}
@@ -18,11 +14,18 @@ class CompletionArgSuite extends BaseCompletionSuite {
        |Main arg
        |:: scala.collection.immutable
        |""".stripMargin,
-    topLines = Option(3)
+    topLines = Option(3),
+    compat = Map(
+      "3.0" ->
+        """|assertion = : Boolean
+           |Main arg
+           |+: scala.collection
+           |""".stripMargin
+    )
   )
 
   check(
-    "arg1".only,
+    "arg1",
     s"""|object Main {
         |  assert(assertion = true, @@)
         |}
@@ -170,14 +173,8 @@ class CompletionArgSuite extends BaseCompletionSuite {
     topLines = Option(2)
   )
 
-  // In scala3, we get NoSymbol for `until`, so we get no completions here.
-  // This might be because the `1.until` method has multiple overloaded methods, like `until(end: Long)` and `until(start: Long, end: Long)`,
-  // and that's why we can't retrieve a specfic symbol.
-  // Might be good to fixed in Dotty.
-  // see: https://github.com/scalameta/metals/pull/2369
   check(
-    "arg9".tag(IgnoreScala3),
-    // `until` has multiple implicit conversion alternatives
+    "arg9",
     s"""|
         |object Main {
         |  1.until(@@)
@@ -185,7 +182,7 @@ class CompletionArgSuite extends BaseCompletionSuite {
         |""".stripMargin,
     """|end = : Int
        |Main arg9
-       |:: scala.collection.immutable
+       |+: scala.collection
        |""".stripMargin,
     topLines = Option(3)
   )
