@@ -29,7 +29,7 @@ class CreateNewSymbol() extends CodeAction {
       codeAction.setKind(l.CodeActionKind.QuickFix)
       codeAction.setDiagnostics(List(diagnostic).asJava)
       codeAction.setCommand(
-        ServerCommands.NewScalaFile.toLSP(parentUri.toString(), name)
+        ServerCommands.NewScalaFile.toLSP(List(parentUri.toString(), name))
       )
       codeAction
     }

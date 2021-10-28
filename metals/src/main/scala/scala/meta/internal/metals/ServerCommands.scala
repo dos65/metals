@@ -58,41 +58,42 @@ object ServerCommands {
   )
 
   /** Decode a file e.g. javap, semanticdb */
-  val DecodeFile = new ParametrizedCommand[String](
-    "file-decode",
-    "Decode file",
-    """|Decode a file into a human readable format.
-       |
-       |Compilation involves various binary files that can't be read directly
-       |in a text editor so they need to be decoded into a human readable format.
-       |Examples include `.class` and `.semanticdb`.
-       |""".stripMargin,
-    """|[uri], uri of the file with any parameters required for decoding.
-       |Examples:
-       |
-       |javap:
-       |  metalsDecode:file:///somePath/someFile.java.javap
-       |  metalsDecode:file:///somePath/someFile.scala.javap
-       |  metalsDecode:file:///somePath/someFile.class.javap
-       |  metalsDecode:file:///somePath/someFile.java.javap-verbose
-       |  metalsDecode:file:///somePath/someFile.scala.javap-verbose
-       |  metalsDecode:file:///somePath/someFile.class.javap-verbose
-       |semanticdb:
-       |  metalsDecode:file:///somePath/someFile.java.semanticdb-compact
-       |  metalsDecode:file:///somePath/someFile.java.semanticdb-detailed
-       |  metalsDecode:file:///somePath/someFile.scala.semanticdb-compact
-       |  metalsDecode:file:///somePath/someFile.scala.semanticdb-detailed
-       |  metalsDecode:file:///somePath/someFile.java.semanticdb.semanticdb-compact
-       |  metalsDecode:file:///somePath/someFile.java.semanticdb.semanticdb-detailed
-       |  metalsDecode:file:///somePath/someFile.scala.semanticdb.semanticdb-compact
-       |  metalsDecode:file:///somePath/someFile.scala.semanticdb.semanticdb-detailed
-       |tasty:
-       |  metalsDecode:file:///somePath/someFile.scala.tasty-decoded
-       |  metalsDecode:file:///somePath/someFile.tasty.tasty-decoded
-       |jar:
-       |  metalsDecode:jar:file:///somePath/someFile-sources.jar!/somePackage/someFile.java
-       |""".stripMargin
-  )
+  val DecodeFile: ParametrizedCommand[String] =
+    ParametrizedCommand.SingleArg[String](
+      "file-decode",
+      "Decode file",
+      """|Decode a file into a human readable format.
+         |
+         |Compilation involves various binary files that can't be read directly
+         |in a text editor so they need to be decoded into a human readable format.
+         |Examples include `.class` and `.semanticdb`.
+         |""".stripMargin,
+      """|[uri], uri of the file with any parameters required for decoding.
+         |Examples:
+         |
+         |javap:
+         |  metalsDecode:file:///somePath/someFile.java.javap
+         |  metalsDecode:file:///somePath/someFile.scala.javap
+         |  metalsDecode:file:///somePath/someFile.class.javap
+         |  metalsDecode:file:///somePath/someFile.java.javap-verbose
+         |  metalsDecode:file:///somePath/someFile.scala.javap-verbose
+         |  metalsDecode:file:///somePath/someFile.class.javap-verbose
+         |semanticdb:
+         |  metalsDecode:file:///somePath/someFile.java.semanticdb-compact
+         |  metalsDecode:file:///somePath/someFile.java.semanticdb-detailed
+         |  metalsDecode:file:///somePath/someFile.scala.semanticdb-compact
+         |  metalsDecode:file:///somePath/someFile.scala.semanticdb-detailed
+         |  metalsDecode:file:///somePath/someFile.java.semanticdb.semanticdb-compact
+         |  metalsDecode:file:///somePath/someFile.java.semanticdb.semanticdb-detailed
+         |  metalsDecode:file:///somePath/someFile.scala.semanticdb.semanticdb-compact
+         |  metalsDecode:file:///somePath/someFile.scala.semanticdb.semanticdb-detailed
+         |tasty:
+         |  metalsDecode:file:///somePath/someFile.scala.tasty-decoded
+         |  metalsDecode:file:///somePath/someFile.tasty.tasty-decoded
+         |jar:
+         |  metalsDecode:jar:file:///somePath/someFile-sources.jar!/somePackage/someFile.java
+         |""".stripMargin
+    )
 
   val RunDoctor = new Command(
     "doctor-run",
@@ -213,89 +214,94 @@ object ServerCommands {
        |""".stripMargin
   )
 
-  val AnalyzeStacktrace = new ParametrizedCommand[String](
-    "analyze-stacktrace",
-    "Analyze stacktrace",
-    """|Converts provided stacktrace in the parameter to a format that contains links
-       |to locations of places where the exception was raised.
-       |
-       |If the configuration parameter of the client (support-commands-in-html) is true
-       |then client is requested to display html with links
-       |already pointing to proper locations in user codebase.
-       |Otherwise client will display simple scala file
-       |but with code lenses that direct user to proper location in codebase.
-       |""".stripMargin,
-    "[string], where the string is a stacktrace."
-  )
+  val AnalyzeStacktrace: ParametrizedCommand[String] =
+    ParametrizedCommand.SingleArg[String](
+      "analyze-stacktrace",
+      "Analyze stacktrace",
+      """|Converts provided stacktrace in the parameter to a format that contains links
+         |to locations of places where the exception was raised.
+         |
+         |If the configuration parameter of the client (support-commands-in-html) is true
+         |then client is requested to display html with links
+         |already pointing to proper locations in user codebase.
+         |Otherwise client will display simple scala file
+         |but with code lenses that direct user to proper location in codebase.
+         |""".stripMargin,
+      "[string], where the string is a stacktrace."
+    )
 
   final case class ChooseClassRequest(
       textDocument: TextDocumentIdentifier,
       kind: String
   )
-  val ChooseClass = new ParametrizedCommand[ChooseClassRequest](
-    "choose-class",
-    "Choose class",
-    """|Exists only because of how vscode virtual documents work. Usage of this command is discouraged, it'll be removed in the future,
-       |when metals-vscode will implement custom editor for .tasty and .class files.
-       |Shows toplevel definitions such as classes, traits, objects and toplevel methods which are defined in a given scala file. 
-       |Then, returns an URI pointing to the .tasty or .class file for class picked by user""".stripMargin,
-    """|Object with `textDocument` and `includeInnerClasses`
-       |
-       |Example:
-       |```json
-       |{
-       |  textDocument: {uri: file:///home/dev/foo/Bar.scala},
-       |  kind: 'tasty' | 'class'
-       |}
-       |```
-       |""".stripMargin
-  )
+  val ChooseClass: ParametrizedCommand[ChooseClassRequest] =
+    ParametrizedCommand.SingleArg[ChooseClassRequest](
+      "choose-class",
+      "Choose class",
+      """|Exists only because of how vscode virtual documents work. Usage of this command is discouraged, it'll be removed in the future,
+         |when metals-vscode will implement custom editor for .tasty and .class files.
+         |Shows toplevel definitions such as classes, traits, objects and toplevel methods which are defined in a given scala file. 
+         |Then, returns an URI pointing to the .tasty or .class file for class picked by user""".stripMargin,
+      """|Object with `textDocument` and `includeInnerClasses`
+         |
+         |Example:
+         |```json
+         |{
+         |  textDocument: {uri: file:///home/dev/foo/Bar.scala},
+         |  kind: 'tasty' | 'class'
+         |}
+         |```
+         |""".stripMargin
+    )
 
-  val GotoSymbol = new ParametrizedCommand[String](
-    "goto",
-    "Goto location for symbol",
-    """|Move the cursor to the definition of the argument symbol.
-       |
-       |""".stripMargin,
-    "[string], where the string is a SemanticDB symbol."
-  )
+  val GotoSymbol: ParametrizedCommand[String] =
+    ParametrizedCommand.SingleArg[String](
+      "goto",
+      "Goto location for symbol",
+      """|Move the cursor to the definition of the argument symbol.
+         |
+         |""".stripMargin,
+      "[string], where the string is a SemanticDB symbol."
+    )
 
-  val GotoPosition = new ParametrizedCommand[Location](
-    "goto-position",
-    "Goto location for position",
-    """|Move the cursor to the location provided in arguments.
-       |It simply forwards request to client.
-       |
-       |""".stripMargin,
-    "[location], where the location is a lsp location object."
-  )
+  val GotoPosition: ParametrizedCommand[Location] =
+    ParametrizedCommand.SingleArg[Location](
+      "goto-position",
+      "Goto location for position",
+      """|Move the cursor to the location provided in arguments.
+         |It simply forwards request to client.
+         |
+         |""".stripMargin,
+      "[location], where the location is a lsp location object."
+    )
 
-  val GotoSuperMethod = new ParametrizedCommand[TextDocumentPositionParams](
-    "goto-super-method",
-    "Go to super method/field definition",
-    """|Jumps to super method/field definition of a symbol under cursor according to inheritance rules.
-       |When A {override def x()} <:< B <:< C {def x()} and on method 'A.x' it will jump directly to 'C.x'
-       |as method x() is not overridden in B.
-       |If symbol is a reference of a method it will jump to a definition.
-       |If symbol under cursor is invalid or does not override anything then command is ignored.
-       |
-       |Note: document in json argument must be absolute path.
-       |""".stripMargin,
-    """|
-       |Object with `document` and `position`
-       |
-       |Example:
-       |```json
-       |{
-       |  document: "file:///home/dev/foo/Bar.scala",
-       |  position: {line: 5, character: 12}
-       |}
-       |```
-       |""".stripMargin
-  )
+  val GotoSuperMethod: ParametrizedCommand[TextDocumentPositionParams] =
+    ParametrizedCommand.SingleArg[TextDocumentPositionParams](
+      "goto-super-method",
+      "Go to super method/field definition",
+      """|Jumps to super method/field definition of a symbol under cursor according to inheritance rules.
+         |When A {override def x()} <:< B <:< C {def x()} and on method 'A.x' it will jump directly to 'C.x'
+         |as method x() is not overridden in B.
+         |If symbol is a reference of a method it will jump to a definition.
+         |If symbol under cursor is invalid or does not override anything then command is ignored.
+         |
+         |Note: document in json argument must be absolute path.
+         |""".stripMargin,
+      """|
+         |Object with `document` and `position`
+         |
+         |Example:
+         |```json
+         |{
+         |  document: "file:///home/dev/foo/Bar.scala",
+         |  position: {line: 5, character: 12}
+         |}
+         |```
+         |""".stripMargin
+    )
 
-  val SuperMethodHierarchy =
-    new ParametrizedCommand[TextDocumentPositionParams](
+  val SuperMethodHierarchy: ParametrizedCommand[TextDocumentPositionParams] =
+    ParametrizedCommand.SingleArg[TextDocumentPositionParams](
       "super-method-hierarchy",
       "Go to super method/field definition in hierarchy",
       """|When user executes this command it will calculate inheritance hierarchy of a class that contains given method.
@@ -331,18 +337,19 @@ object ServerCommands {
     "[string?], where string is a choice value."
   )
 
-  val NewScalaFile = new ListParametrizedCommand[String](
-    "new-scala-file",
-    "Create new scala file",
-    """|Create and open new file with either scala class, object, trait, package object or worksheet.
-       |
-       |Note: requires 'metals/inputBox' capability from language client.
-       |""".stripMargin,
-    """|[string[]], where the first is a directory location for the new file.
-       |The second and third positions correspond to the file name and file type to allow for quick
-       |creation of a file if all are present.
-       |""".stripMargin
-  )
+  val NewScalaFile: ParametrizedCommand[List[String]] =
+    ParametrizedCommand.ListArgs[String](
+      "new-scala-file",
+      "Create new scala file",
+      """|Create and open new file with either scala class, object, trait, package object or worksheet.
+         |
+         |Note: requires 'metals/inputBox' capability from language client.
+         |""".stripMargin,
+      """|[string[]], where the first is a directory location for the new file.
+         |The second and third positions correspond to the file name and file type to allow for quick
+         |creation of a file if all are present.
+         |""".stripMargin
+    )
 
   val NewScalaProject = new Command(
     "new-scala-project",
@@ -355,19 +362,20 @@ object ServerCommands {
        |""".stripMargin
   )
 
-  val CopyWorksheetOutput = new ParametrizedCommand[String](
-    "copy-worksheet-output",
-    "Copy Worksheet Output",
-    """|Copy the contents of a worksheet to your local buffer.
-       |
-       |Note: This command returns the contents of the worksheet, and the LSP client
-       |is in charge of taking that content and putting it into your local buffer.
-       |""".stripMargin,
-    "[uri], the uri of the worksheet that you'd like to copy the contents of."
-  )
+  val CopyWorksheetOutput: ParametrizedCommand[String] =
+    ParametrizedCommand.SingleArg[String](
+      "copy-worksheet-output",
+      "Copy Worksheet Output",
+      """|Copy the contents of a worksheet to your local buffer.
+         |
+         |Note: This command returns the contents of the worksheet, and the LSP client
+         |is in charge of taking that content and putting it into your local buffer.
+         |""".stripMargin,
+      "[uri], the uri of the worksheet that you'd like to copy the contents of."
+    )
 
-  val ExtractMemberDefinition =
-    new ParametrizedCommand[TextDocumentPositionParams](
+  val ExtractMemberDefinition: ParametrizedCommand[TextDocumentPositionParams] =
+    ParametrizedCommand.SingleArg[TextDocumentPositionParams](
       "extract-member-definition",
       "Extract member definition",
       """|Whenever a user chooses a code action to extract a definition of a Class/Trait/Object/Enum this
@@ -385,23 +393,24 @@ object ServerCommands {
          |""".stripMargin
     )
 
-  val InsertInferredType = new ParametrizedCommand[TextDocumentPositionParams](
-    "insert-inferred-type",
-    "Insert inferred type of a value",
-    """|Whenever a user chooses code action to insert the inferred type this command is later ran to 
-       |calculate the type and insert it in the correct location.
-       |""".stripMargin,
-    """|Object with `document` and `position`
-       |
-       |Example:
-       |```json
-       |{
-       |  document: "file:///home/dev/foo/Bar.scala",
-       |  position: {line: 5, character: 12}
-       |}
-       |```
-       |""".stripMargin
-  )
+  val InsertInferredType: ParametrizedCommand[TextDocumentPositionParams] =
+    ParametrizedCommand.SingleArg[TextDocumentPositionParams](
+      "insert-inferred-type",
+      "Insert inferred type of a value",
+      """|Whenever a user chooses code action to insert the inferred type this command is later ran to 
+         |calculate the type and insert it in the correct location.
+         |""".stripMargin,
+      """|Object with `document` and `position`
+         |
+         |Example:
+         |```json
+         |{
+         |  document: "file:///home/dev/foo/Bar.scala",
+         |  position: {line: 5, character: 12}
+         |}
+         |```
+         |""".stripMargin
+    )
 
   val GotoLog = new Command(
     "goto-log",

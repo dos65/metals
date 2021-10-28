@@ -22,71 +22,73 @@ object ClientCommands {
       """`string`, the command ID to execute on the client.""".stripMargin
   )
 
-  val RunDoctor = new ParametrizedCommand[String](
-    "metals-doctor-run",
-    "Run doctor",
-    """|Focus on a window displaying troubleshooting help from the Metals doctor.
-       |
-       |If `doctorProvider` is set to `"json"` then the schema is as follows:
-       |```json
-       |export interface DoctorOutput {
-       |  /** Metals Doctor title */
-       |  title: string;
-       |  /**
-       |   * Contains decisions that were made about what build tool or build server
-       |   * the user has chosen. There is also other brief information about understanding
-       |   * the Doctor placed in here as well.
-       |   */
-       |   headerText: string;
-       |   /**
-       |    * If build targets are detected in your workspace, they will be listed here with
-       |    * the status of related functionality of Metals for each build target.
-       |    */
-       |   targets?: DoctorBuildTarget[];
-       |   /** Messages given if build targets cannot be found */
-       |   messages?: DoctorRecommendation[];
-       |}
-       |
-       |```
-       |```json
-       |export interface DoctorBuildTarget {
-       |  /** Name of the build target */
-       |  buildTarget: string;
-       |  /** Scala version of the build target */
-       |  scalaVersion: string;
-       |  /** Status of diagnostics */
-       |  diagnostics: string;
-       |  /** Status of goto definitions */
-       |  gotoDefinition: string;
-       |  /** Status of completions */
-       |  completions: string;
-       |  /** Status of find references */
-       |  findReferences: string;
-       |  /** Any recommendations in how to fix any issues that are found above */
-       |  recommendation: string;
-       |}
-       |```
-       |```json
-       |export interface DoctorRecommendation {
-       |  /** Title of the recommendation */
-       |  title: string;
-       |  /** Recommendations related to the found issue. */
-       |  recommendations: string[]
-       |}
-       |```
-       |""".stripMargin,
-    arguments =
-      """`string`, the HTML to display in the focused window.""".stripMargin
-  )
+  val RunDoctor: ParametrizedCommand[String] =
+    ParametrizedCommand.SingleArg[String](
+      "metals-doctor-run",
+      "Run doctor",
+      """|Focus on a window displaying troubleshooting help from the Metals doctor.
+         |
+         |If `doctorProvider` is set to `"json"` then the schema is as follows:
+         |```json
+         |export interface DoctorOutput {
+         |  /** Metals Doctor title */
+         |  title: string;
+         |  /**
+         |   * Contains decisions that were made about what build tool or build server
+         |   * the user has chosen. There is also other brief information about understanding
+         |   * the Doctor placed in here as well.
+         |   */
+         |   headerText: string;
+         |   /**
+         |    * If build targets are detected in your workspace, they will be listed here with
+         |    * the status of related functionality of Metals for each build target.
+         |    */
+         |   targets?: DoctorBuildTarget[];
+         |   /** Messages given if build targets cannot be found */
+         |   messages?: DoctorRecommendation[];
+         |}
+         |
+         |```
+         |```json
+         |export interface DoctorBuildTarget {
+         |  /** Name of the build target */
+         |  buildTarget: string;
+         |  /** Scala version of the build target */
+         |  scalaVersion: string;
+         |  /** Status of diagnostics */
+         |  diagnostics: string;
+         |  /** Status of goto definitions */
+         |  gotoDefinition: string;
+         |  /** Status of completions */
+         |  completions: string;
+         |  /** Status of find references */
+         |  findReferences: string;
+         |  /** Any recommendations in how to fix any issues that are found above */
+         |  recommendation: string;
+         |}
+         |```
+         |```json
+         |export interface DoctorRecommendation {
+         |  /** Title of the recommendation */
+         |  title: string;
+         |  /** Recommendations related to the found issue. */
+         |  recommendations: string[]
+         |}
+         |```
+         |""".stripMargin,
+      arguments =
+        """`string`, the HTML to display in the focused window.""".stripMargin
+    )
 
-  val ReloadDoctor = new ParametrizedCommand[String](
-    "metals-doctor-reload",
-    "Reload doctor",
-    """|Reload the HTML contents of an open Doctor window, if any. Should be ignored if there is no open doctor window.
-       |If `doctorProvider` is set to `"json"`, then the schema is the same as found above in `"metals-run-doctor"`""".stripMargin,
-    arguments =
-      """`string`, the HTML to display in the focused window.""".stripMargin
-  )
+  val ReloadDoctor: ParametrizedCommand[String] =
+    ParametrizedCommand.SingleArg[String](
+      "metals-doctor-reload",
+      "Reload doctor",
+      """|Reload the HTML contents of an open Doctor window, if any. Should be ignored if there is no open doctor window.
+         |If `doctorProvider` is set to `"json"`, then the schema is the same as found above in `"metals-run-doctor"`""".stripMargin,
+      arguments =
+        """`string`, the HTML to display in the focused window.""".stripMargin
+    )
 
   val ToggleLogs = new Command(
     "metals-logs-toggle",
@@ -158,65 +160,67 @@ object ClientCommands {
        |""".stripMargin
   )
 
-  object GotoLocation
-      extends ParametrizedCommand2[l.Location, Boolean](
-        "metals-goto-location",
-        "Goto location",
-        "Move the cursor focus to the provided location",
-        """|First required parameter is LSP `Location` object with `uri` and `range` fields.
-           |Second parameter is optional and has signature `otherWindow: Boolean`. 
-           |It gives a hint to client that if possible it would be good to open location in
-           |another buffer/window.
-           |Example: 
-           |```json
-           |[{
-           |  "uri": "file://path/to/Definition.scala",
-           |  "range": {
-           |    "start": {"line": 194, "character": 0},
-           |    "end":   {"line": 194, "character": 1}
-           |  }
-           |},
-           |  false
-           |]
-           |```
-           |""".stripMargin
-      )
+  val GotoLocation: ParametrizedCommand[(l.Location, Boolean)] =
+    ParametrizedCommand.DoubleArgs[l.Location, Boolean](
+      "metals-goto-location",
+      "Goto location",
+      "Move the cursor focus to the provided location",
+      """|First required parameter is LSP `Location` object with `uri` and `range` fields.
+         |Second parameter is optional and has signature `otherWindow: Boolean`. 
+         |It gives a hint to client that if possible it would be good to open location in
+         |another buffer/window.
+         |Example: 
+         |```json
+         |[{
+         |  "uri": "file://path/to/Definition.scala",
+         |  "range": {
+         |    "start": {"line": 194, "character": 0},
+         |    "end":   {"line": 194, "character": 1}
+         |  }
+         |},
+         |  false
+         |]
+         |```
+         |""".stripMargin
+    )
+  val OpenFolder: ParametrizedCommand[MetalsOpenWindowParams] =
+    ParametrizedCommand.SingleArg[MetalsOpenWindowParams](
+      "metals-open-folder",
+      "Open a specified folder either in the same or new window",
+      """Open a new window with the specified directory.""".stripMargin,
+      """|An object with `uri` and `newWindow` fields.
+         |Example: 
+         |```json
+         |{
+         |  "uri": "file://path/to/directory",
+         |  "newWindow": true
+         |}
+         |```
+         |""".stripMargin
+    )
 
-  val OpenFolder = new ParametrizedCommand[MetalsOpenWindowParams](
-    "metals-open-folder",
-    "Open a specified folder either in the same or new window",
-    """Open a new window with the specified directory.""".stripMargin,
-    """|An object with `uri` and `newWindow` fields.
-       |Example: 
-       |```json
-       |{
-       |  "uri": "file://path/to/directory",
-       |  "newWindow": true
-       |}
-       |```
-       |""".stripMargin
-  )
+  val CopyWorksheetOutput: ParametrizedCommand[URI] =
+    ParametrizedCommand.SingleArg[URI](
+      "metals.copy-worksheet-output",
+      "Copy Worksheet Output",
+      s"""|Copy the contents of a worksheet to your local buffer.
+          |
+          |Note: This command should execute the ${ServerCommands.CopyWorksheetOutput.id} 
+          |      server command to get the output to copy into the buffer.
+          |
+          |Server will attempt to create code lens with this command if `copyWorksheetOutputProvider` option is set.
+          |""".stripMargin,
+      "[uri], the uri of the worksheet that you'd like to copy the contents of."
+    )
 
-  val CopyWorksheetOutput = new ParametrizedCommand[URI](
-    "metals.copy-worksheet-output",
-    "Copy Worksheet Output",
-    s"""|Copy the contents of a worksheet to your local buffer.
-        |
-        |Note: This command should execute the ${ServerCommands.CopyWorksheetOutput.id} 
-        |      server command to get the output to copy into the buffer.
-        |
-        |Server will attempt to create code lens with this command if `copyWorksheetOutputProvider` option is set.
-        |""".stripMargin,
-    "[uri], the uri of the worksheet that you'd like to copy the contents of."
-  )
-
-  val ShowStacktrace = new ParametrizedCommand[String](
-    "metals-show-stacktrace",
-    "Show the stacktrace in the client.",
-    s"""|Show the stacktrace modified with links to specific files.
-        |""".stripMargin,
-    "[string], the markdown representation of the stacktrace"
-  )
+  val ShowStacktrace: ParametrizedCommand[String] =
+    ParametrizedCommand.SingleArg[String](
+      "metals-show-stacktrace",
+      "Show the stacktrace in the client.",
+      s"""|Show the stacktrace modified with links to specific files.
+          |""".stripMargin,
+      "[string], the markdown representation of the stacktrace"
+    )
 
   def all: List[BaseCommand] =
     List(

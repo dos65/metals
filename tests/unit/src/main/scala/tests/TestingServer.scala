@@ -38,7 +38,6 @@ import scala.meta.internal.metals.DidFocusResult
 import scala.meta.internal.metals.Directories
 import scala.meta.internal.metals.HoverExtParams
 import scala.meta.internal.metals.InitializationOptions
-import scala.meta.internal.metals.ListParametrizedCommand
 import scala.meta.internal.metals.MetalsEnrichments._
 import scala.meta.internal.metals.MetalsLanguageServer
 import scala.meta.internal.metals.MetalsServerConfig
@@ -479,12 +478,12 @@ final class TestingServer(
   }
 
   def executeCommand[T](
-      command: ListParametrizedCommand[T],
+      command: ParametrizedCommand[List[T]],
       param: T*
   ): Future[Any] = {
     Debug.printEnclosing()
     scribe.info(s"Executing command [${command.id}]")
-    server.executeCommand(command.toExecuteCommandParams(param: _*)).asScala
+    server.executeCommand(command.toExecuteCommandParams(param.toList)).asScala
   }
 
   def executeCommand[T](command: Command): Future[Any] = {

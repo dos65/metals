@@ -58,119 +58,140 @@ object OpenBrowserCommand {
   }
 }
 
-case class ParametrizedCommand[T: ClassTag](
-    id: String,
-    title: String,
-    description: String,
-    arguments: String
-) extends BaseCommand {
+trait ParameterCodec[A] {
+  def toLspArgs(a: A): List[AnyRef]
+  def decode(raw: List[AnyRef]): Option[A]
+}
 
-  private val parser = new JsonParser.Of[T]
+object ParamerCodec {
 
-  def unapply(params: l.ExecuteCommandParams): Option[T] = {
-    val args = Option(params.getArguments()).toList.flatMap(_.asScala)
-    if (args.size != 1 || !isApplicableCommand(params)) None
-    else {
-      args(0) match {
-        case parser.Jsonized(t1) =>
-          Option(t1)
-        case _ => None
+  def singleArg[A: ClassTag]: ParameterCodec[A] = {
+    new ParameterCodec[A] {
+      private val parser = new JsonParser.Of[A]
+      override def toLspArgs(a: A): List[AnyRef] = {
+        List(a.toJson)
       }
+      override def decode(rawArgs: List[AnyRef]): Option[A] = {
+        if (rawArgs.size != 1) None
+        else {
+          rawArgs(0) match {
+            case parser.Jsonized(t1) =>
+              Option(t1)
+            case _ => None
+          }
+        }
+      }
+
     }
   }
 
-  def toLSP(argument: T): l.Command =
-    new l.Command(title, id, List(argument.toJson.asInstanceOf[AnyRef]).asJava)
+  def listArgs[A: ClassTag]: ParameterCodec[List[A]] =
+    new ParameterCodec[List[A]] {
+      private val parser = new JsonParser.Of[A]
 
-  def toExecuteCommandParams(argument: T): l.ExecuteCommandParams = {
-    new l.ExecuteCommandParams(
-      id,
-      List[Object](
-        argument.toJson
-      ).asJava
-    )
-  }
-}
+      override def toLspArgs(a: List[A]): List[AnyRef] =
+        a.map(_.toJson)
 
-case class ParametrizedCommand2[T1: ClassTag, T2: ClassTag](
-    id: String,
-    title: String,
-    description: String,
-    arguments: String
-) extends BaseCommand {
-
-  private val parser1 = new JsonParser.Of[T1]
-  private val parser2 = new JsonParser.Of[T2]
-
-  def unapply(params: l.ExecuteCommandParams): Option[(T1, T2)] = {
-    val args = Option(params.getArguments()).toList.flatMap(_.asScala)
-    if (args.size != 2 || !isApplicableCommand(params)) None
-    else {
-      (args(0), args(1)) match {
-        case (parser1.Jsonized(t1), parser2.Jsonized(t2)) =>
-          Option((t1, t2))
-        case _ => None
-      }
-    }
-  }
-
-  def toLSP(argument1: T1, argument2: T2): l.Command =
-    new l.Command(
-      title,
-      id,
-      List(
-        argument1.toJson.asInstanceOf[AnyRef],
-        argument2.toJson.asInstanceOf[AnyRef]
-      ).asJava
-    )
-
-  def toExecuteCommandParams(
-      argument1: T1,
-      argument2: T2
-  ): l.ExecuteCommandParams = {
-    new l.ExecuteCommandParams(
-      id,
-      List[Object](
-        argument1.toJson,
-        argument2.toJson
-      ).asJava
-    )
-  }
-}
-
-case class ListParametrizedCommand[T: ClassTag](
-    id: String,
-    title: String,
-    description: String,
-    arguments: String
-) extends BaseCommand {
-
-  private val parser = new JsonParser.Of[T]
-
-  def toLSP(arguments: T*): l.Command =
-    new l.Command(
-      title,
-      id,
-      arguments.map(_.toJson.asInstanceOf[AnyRef]).asJava
-    )
-
-  def unapply(params: l.ExecuteCommandParams): Option[List[Option[T]]] = {
-    if (!isApplicableCommand(params)) None
-    else {
-      val args = Option(params.getArguments()).toList
-        .flatMap(_.asScala)
-        .map {
-          case parser.Jsonized(t) => Option(t)
+      override def decode(raw: List[AnyRef]): Option[List[A]] = {
+        val decoded = raw.flatMap {
+          case parser.Jsonized(a) => Some(a)
           case _ => None
         }
-      Some(args)
+        Some(decoded)
+      }
+    }
+
+  def tuple2[A: ClassTag, B: ClassTag]: ParameterCodec[(A, B)] = {
+    new ParameterCodec[(A, B)] {
+      private val parserA = new JsonParser.Of[A]
+      private val parserB = new JsonParser.Of[B]
+
+      override def toLspArgs(v: (A, B)): List[AnyRef] =
+        List(v._1.toJson, v._2.toJson)
+
+      override def decode(raw: List[AnyRef]): Option[(A, B)] = {
+        (raw(0), raw(1)) match {
+          case (parserA.Jsonized(t1), parserB.Jsonized(t2)) =>
+            Option((t1, t2))
+          case _ => None
+        }
+      }
     }
   }
+}
 
-  def toExecuteCommandParams(argument: T*): l.ExecuteCommandParams = {
+case class ParametrizedCommand[A](
+    id: String,
+    title: String,
+    description: String,
+    arguments: String,
+    codec: ParameterCodec[A]
+) extends BaseCommand {
+
+  def unapply(params: l.ExecuteCommandParams): Option[A] = {
+    if (isApplicableCommand(params)) {
+      Option(params.getArguments()).flatMap(jArgs =>
+        codec.decode(jArgs.asScala.toList)
+      )
+    } else None
+  }
+
+  def toLSP(argument: A): l.Command =
+    new l.Command(title, id, codec.toLspArgs(argument).asJava)
+
+  def toExecuteCommandParams(argument: A): l.ExecuteCommandParams = {
     new l.ExecuteCommandParams(
       id,
-      argument.map(_.toJson.asInstanceOf[AnyRef]).asJava
+      codec.toLspArgs(argument).asJava
     )
   }
+}
+
+object ParametrizedCommand {
+
+  def SingleArg[A: ClassTag](
+      id: String,
+      title: String,
+      description: String,
+      arguments: String
+  ): ParametrizedCommand[A] = {
+    ParametrizedCommand(
+      id,
+      title,
+      description,
+      arguments,
+      ParamerCodec.singleArg
+    )
+  }
+
+  def DoubleArgs[A: ClassTag, B: ClassTag](
+      id: String,
+      title: String,
+      description: String,
+      arguments: String
+  ): ParametrizedCommand[(A, B)] = {
+    ParametrizedCommand(
+      id,
+      title,
+      description,
+      arguments,
+      ParamerCodec.tuple2
+    )
+  }
+
+  def ListArgs[A: ClassTag](
+      id: String,
+      title: String,
+      description: String,
+      arguments: String
+  ): ParametrizedCommand[List[A]] = {
+    ParametrizedCommand[List[A]](
+      id,
+      title,
+      description,
+      arguments,
+      ParamerCodec.listArgs
+    )
+  }
+
 }
