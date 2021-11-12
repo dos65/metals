@@ -82,6 +82,7 @@ import org.eclipse.lsp4j.SelectionRange
 import org.eclipse.lsp4j.SignatureHelp
 import org.eclipse.lsp4j.SignatureInformation
 import org.eclipse.lsp4j.TextEdit
+import scala.util.control.NonFatal
 
 case class ScalaPresentationCompiler(
     buildTargetIdentifier: String = "",
@@ -315,7 +316,25 @@ case class ScalaPresentationCompiler(
         List(EmptyTree)
   end expandRangeToEnclosingApply
 
+  //List.apply
+
   def hover(params: OffsetParams): CompletableFuture[ju.Optional[Hover]] =
+    def qual(tree: Tree): Tree =
+      tree match
+        case Apply(q, _) => qual(q)
+        case TypeApply(q, _) => qual(q)
+        case AppliedTypeTree(q, _) => qual(q)
+        // case Unapply(q, _) => qual(q)
+        case Select(q, _) => q
+        case _ => tree
+    def seenFrom(tree: Tree, sym: Symbol)(using Context): Type =
+      try
+        val pre = qual(tree)
+        val denot = sym.denot.asSeenFrom(pre.tpe)
+        denot.info
+
+      catch case NonFatal(e) => sym.info
+
     compilerAccess.withNonInterruptableCompiler(
       ju.Optional.empty[Hover](),
       params.token
@@ -333,6 +352,16 @@ case class ScalaPresentationCompiler(
         if path.isEmpty then NoType else path.head.tpe
 
       val path = Interactive.pathTo(trees, pos)
+
+      // println(
+      //   path
+      //     .map(t =>
+      //       s"${t.getClass} ${t.symbol} ${if t.symbol != NoSymbol then t.symbol.owner
+      //       else "dsd"}"
+      //     )
+      //     .mkString("\n")
+      // )
+
       val tp = typeFromPath(path)
       val tpw = tp.widenTermRefExpr
       // For expression we need to find all enclosing applies to get the exact generic type
@@ -368,8 +397,19 @@ case class ScalaPresentationCompiler(
                     symbol.paramRef
                   )
                 case _ =>
-                  printer.hoverDetailString(symbol, history, tpw)
+                  println(enclosing.head)
+                  val tpe =
+                    if symbol.isType then symbol.typeRef
+                    else seenFrom(enclosing.head, symbol)
+                  val finalTpe =
+                    if tpe != NoType then tpe else tpw
+                  printer.hoverDetailString(
+                    symbol,
+                    history,
+                    finalTpe
+                  )
               end match
+            end hoverString
 
             val docString =
               docComments.map(_.renderAsMarkdown).mkString("\n")
