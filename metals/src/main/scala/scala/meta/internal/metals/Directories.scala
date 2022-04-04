@@ -20,7 +20,10 @@ object Directories {
     RelativePath(".metals").resolve("workspace-symbol.md")
   def stacktrace: RelativePath =
     RelativePath(".metals").resolve(stacktraceFilename)
+  def signaturesPath: RelativePath =
+    RelativePath(".metals").resolve(signaturesName)
 
   val stacktraceFilename = "stacktrace.scala"
   val dependenciesName = "dependencies"
+  val signaturesName = "signatures"
 }

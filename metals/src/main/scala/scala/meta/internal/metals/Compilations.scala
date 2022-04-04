@@ -14,6 +14,9 @@ import scala.meta.io.AbsolutePath
 
 import ch.epfl.scala.bsp4j.BuildTargetIdentifier
 import ch.epfl.scala.{bsp4j => b}
+import scala.meta.internal.signatures.SigCompilations
+import java.nio.file.Path
+import java.net.URI
 
 final class Compilations(
     buildTargets: BuildTargets,
@@ -22,7 +25,8 @@ final class Compilations(
     languageClient: MetalsLanguageClient,
     refreshTestSuites: () => Unit,
     isCurrentlyFocused: b.BuildTargetIdentifier => Boolean,
-    compileWorksheets: Seq[AbsolutePath] => Future[Unit]
+    compileWorksheets: Seq[AbsolutePath] => Future[Unit],
+    sigCompilations: SigCompilations
 )(implicit ec: ExecutionContext) {
 
   // we are maintaining a separate queue for cascade compilation since those must happen ASAP
@@ -175,6 +179,33 @@ final class Compilations(
     Future.sequence(expansions).map(_.flatten)
   }
 
+  def classpathFor(target: ScalaTarget): List[String] = {
+    val x = target.scalac.classpath.map { p =>
+      if (p.endsWith(".jar")) p
+      else {
+        scribe.info(s"~~~~ $p")
+        val abs = AbsolutePath(Path.of(URI.create(p)))
+        val ws = workspace()
+        val rel = abs.toRelative(ws)
+        rel.toNIO.iterator().asScala.toList.map(_.filename) match {
+          case ".bloop" :: projName :: _ =>
+            buildTargets.all
+              .find(_.getDisplayName == projName)
+              .map(bt => sigCompilations.sigPathsFor(bt).toURI.toString())
+              .getOrElse {
+                scribe.info(s"NOT FOUNBD: ${projName}")
+                p
+              }
+          case x =>
+            scribe.info(s"NO MATCH: ${x}")
+            p
+        }
+      }
+    }
+    scribe.info(s"OUT: $x")
+    x
+  }
+
   private def compile(
       targets: Seq[b.BuildTargetIdentifier]
   ): CancelableFuture[Map[BuildTargetIdentifier, b.CompileResult]] = {
@@ -217,13 +248,17 @@ final class Compilations(
   ): CancelableFuture[b.CompileResult] = {
     val params = new b.CompileParams(targets.asJava)
     targets.foreach(target => isCompiling(target) = true)
+    val sigCompilation = sigCompilations.compile(targets)
     val compilation = connection.compile(params)
 
-    val result = compilation.asScala
-      .andThen { case result =>
-        updateCompiledTargetState(result)
+    val fullCompilation =
+      compilation.asScala.andThen(updateCompiledTargetState(_))
 
-        // See https://github.com/scalacenter/bloop/issues/1067
+    val result = for {
+      sigs <- sigCompilation
+      out <- fullCompilation
+      // See https://github.com/scalacenter/bloop/issues/1067
+      _ <-
         classes.rebuildIndex(
           targets,
           () => {
@@ -233,7 +268,7 @@ final class Compilations(
             }
           }
         )
-      }
+    } yield out
 
     CancelableFuture(result, Cancelable(() => compilation.cancel(false)))
   }

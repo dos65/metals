@@ -281,6 +281,17 @@ object Embedded {
       resolution = resolutionParams
     )
 
+  def downloadScalaScanner(scalaVersion: String): List[Path] = {
+    downloadDependency(
+      Dependency.of(
+        "org.scalameta",
+        s"scala-scanner_${scalaVersion}",
+        "0.1.0-SNAPSHOT"
+      ),
+      Some(scalaVersion)
+    )
+  }
+
   def organizeImportRule(scalaBinaryVersion: String): List[Path] = {
     val dep = Dependency.of(
       "com.github.liancheng",

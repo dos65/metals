@@ -56,6 +56,7 @@ class CompletionProvider(
     val isSnippet = isSnippetEnabled(pos, params.text())
 
     val (i, completion, editRange, query) = safeCompletionsAt(pos, params.uri())
+    println(s"QUERY: $query, results: ${i.results.mkString("\n")}")
 
     val start = inferIdentStart(pos, params.text())
     val end = inferIdentEnd(pos, params.text())

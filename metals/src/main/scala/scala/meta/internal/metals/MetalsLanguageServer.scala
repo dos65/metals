@@ -96,6 +96,7 @@ import org.eclipse.lsp4j.jsonrpc.messages.{Either => JEither}
 import org.eclipse.lsp4j.jsonrpc.services.JsonNotification
 import org.eclipse.lsp4j.jsonrpc.services.JsonRequest
 import org.eclipse.{lsp4j => l}
+import scala.meta.internal.signatures.SigCompilations
 
 class MetalsLanguageServer(
     ec: ExecutionContextExecutorService,
@@ -179,6 +180,7 @@ class MetalsLanguageServer(
     buffers,
     buildTargets
   )
+  val sigCompilations = new SigCompilations(buildTargets, () => workspace)
   val compilations: Compilations = new Compilations(
     buildTargets,
     buildTargetClasses,
@@ -186,7 +188,8 @@ class MetalsLanguageServer(
     languageClient,
     () => testProvider.refreshTestSuites(),
     buildTarget => focusedDocumentBuildTarget.get() == buildTarget,
-    worksheets => onWorksheetChanged(worksheets)
+    worksheets => onWorksheetChanged(worksheets),
+    sigCompilations
   )
   private val fileWatcher = register(
     new FileWatcher(
@@ -658,7 +661,8 @@ class MetalsLanguageServer(
             scalaVersionSelector,
             trees,
             mtagsResolver,
-            sourceMapper
+            sourceMapper,
+            compilations
           )
         )
         debugProvider = new DebugProvider(
@@ -2137,7 +2141,8 @@ class MetalsLanguageServer(
       forceImport: Boolean,
       buildTool: BuildTool,
       checksum: String
-  ): Future[BuildChange] =
+  ): Future[BuildChange] = {
+    scribe.info(s"WHAT $buildTool $forceImport")
     for {
       result <- {
         if (forceImport) bloopInstall.runUnconditionally(buildTool)
@@ -2164,6 +2169,7 @@ class MetalsLanguageServer(
         }
       }
     } yield change
+  }
 
   private def quickConnectToBuildServer(): Future[BuildChange] = {
     val connected = if (!buildTools.isAutoConnectable) {

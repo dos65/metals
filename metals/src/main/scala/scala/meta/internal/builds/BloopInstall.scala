@@ -114,6 +114,7 @@ final class BloopInstall(
           scribe.info(s"skipping build import with status '${result.name}'")
           Future.successful(result)
         case None =>
+          println(s"HERE!!!! ")
           for {
             userResponse <- requestImport(
               buildTools,
@@ -149,6 +150,7 @@ final class BloopInstall(
       languageClient: MetalsLanguageClient,
       digest: String
   )(implicit ec: ExecutionContext): Future[Confirmation] = {
+    scribe.info(s"REQUEST IMPORT: ${buildTools.isBloop}")
     tables.digests.setStatus(digest, Status.Requested)
     val (params, yes) =
       if (buildTools.isBloop) {

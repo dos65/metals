@@ -65,7 +65,8 @@ class Compilers(
     scalaVersionSelector: ScalaVersionSelector,
     trees: Trees,
     mtagsResolver: MtagsResolver,
-    sourceMapper: SourceMapper
+    sourceMapper: SourceMapper,
+    compilations: Compilations
 )(implicit ec: ExecutionContextExecutorService)
     extends Cancelable {
   val plugins = new CompilerPlugins()
@@ -229,18 +230,18 @@ class Compilers(
   }
 
   def didCompile(report: CompileReport): Unit = {
-    if (report.getErrors > 0) {
-      buildTargetPCFromCache(report.getTarget).foreach(_.restart())
-    } else {
-      // Restart PC for all build targets that depend on this target since the classfiles
-      // may have changed.
-      for {
-        target <- buildTargets.allInverseDependencies(report.getTarget)
-        compiler <- buildTargetPCFromCache(target)
-      } {
-        compiler.restart()
-      }
+    // if (report.getErrors > 0) {
+    //   buildTargetPCFromCache(report.getTarget).foreach(_.restart())
+    // } else {
+    //   // Restart PC for all build targets that depend on this target since the classfiles
+    //   // may have changed.
+    for {
+      target <- buildTargets.allInverseDependencies(report.getTarget)
+      compiler <- buildTargetPCFromCache(target)
+    } {
+      compiler.restart()
     }
+    // }
   }
 
   def completionItemResolve(
@@ -669,7 +670,13 @@ class Compilers(
       search: SymbolSearch
   ): PresentationCompiler = {
     val classpath =
-      target.scalac.classpath.toAbsoluteClasspath.map(_.toNIO).toSeq
+      compilations
+        .classpathFor(target)
+        .toAbsoluteClasspath
+        .map(_.toNIO)
+        .toSeq
+
+    scribe.info("CP:" + classpath.mkString("\n"))
     newCompiler(target, mtags, classpath, search)
   }
 
