@@ -605,9 +605,20 @@ lazy val unit = project
   .in(file("tests/unit"))
   .settings(
     testSettings,
-    Test / testOptions ++= Seq(
-      Tests.Filter(name => isInTestShard(name, sLog.value))
-    ),
+    Test / testOptions ++= {
+      val allTests = (Test / definedTestNames).value.sorted
+      if (isCI) {
+        val remainder = 2 - System.getenv("TEST_SHARD").toInt
+        val include =
+          allTests.zipWithIndex
+            .filter { case (_, i) => (i + 1) % 2 == remainder }
+            .map(_._1)
+        Seq(
+          Tests.Filter(name => isInTestShard(name, sLog.value))
+        )
+      } else
+        Seq.empty
+    },
     sharedSettings,
     Test / javaOptions += "-Xmx2G",
     libraryDependencies ++= List(
