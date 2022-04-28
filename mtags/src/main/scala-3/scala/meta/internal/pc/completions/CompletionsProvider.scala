@@ -32,6 +32,7 @@ class CompletionsProvider(
 ):
 
   def completions(): CompletionList =
+    println(params.uri)
     val uri = params.uri
 
     val code = applyCompletionCursor(params)

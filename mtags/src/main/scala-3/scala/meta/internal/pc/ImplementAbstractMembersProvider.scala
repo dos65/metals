@@ -20,6 +20,7 @@ import dotty.tools.dotc.core.Symbols.*
 import dotty.tools.dotc.core.Types.nonClassTypeNameFilter
 import dotty.tools.dotc.core.Types.abstractTermNameFilter
 import scala.meta.io.AbsolutePath
+import org.eclipse.{lsp4j as l}
 
 object ImplementAbstractMembersProvider:
 
@@ -39,13 +40,14 @@ object ImplementAbstractMembersProvider:
   def implementAll(
       driver: InteractiveDriver,
       params: OffsetParams
-  ) =
+  ): List[l.TextEdit] =
 
     val uri = params.uri
-    val filePath = Paths.get(uri)
+    println(uri)
+    // val filePath = Paths.get(uri)
     driver.run(
       uri,
-      SourceFile.virtual(filePath.toString, params.text)
+      CompilerInterfaces.toSource(params.uri, params.text)
     )
     val unit = driver.currentCtx.run.units.head
     val tree = unit.tpdTree
@@ -65,6 +67,17 @@ object ImplementAbstractMembersProvider:
       case (td @ tpd.TypeDef(x, t: tpd.Template)) :: _ =>
         val clazz = td.tpe.classSymbol.asClass
 
+        def isImplemented(mbr: Symbol) =
+          val mbrDenot = mbr.asSeenFrom(clazz.thisType)
+          def isConcrete(sym: Symbol) = sym.exists && !sym.isOneOf(NotConcrete)
+          clazz
+            .nonPrivateMembersNamed(mbr.name)
+            .filterWithPredicate(impl =>
+              isConcrete(impl.symbol)
+                && mbrDenot.matchesLoosely(impl, alwaysCompareTypes = true)
+            )
+            .exists
+
         // TODO: can't have decls of baseClasses if we didn't open the file with the current context
         val members = td.tpe.allMembers.iterator.toList
 
@@ -72,12 +85,15 @@ object ImplementAbstractMembersProvider:
           baseClass <- clazz.baseClasses
           sym <-
             baseClass.info.decls.toList // TODO: can't have decls of baseClasses if we didn't open the file with the current context
-          if ({
-            println(sym); sym.is(DeferredTerm) && sym.isImplementedIn(clazz)
-          })
+          if sym.is(DeferredTerm) && !isImplemented(sym)
         yield sym
+        println("~~~~~~~~~~~~~~~~")
+        println(missingSyms)
+        println("~~~~~~~~~~~~~~~~")
         missingSyms
-      case _ => Seq.empty
+        Nil
+      case _ => Nil
+    Nil
 
   end implementAll
 end ImplementAbstractMembersProvider

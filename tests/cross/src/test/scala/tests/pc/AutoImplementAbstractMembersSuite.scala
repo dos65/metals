@@ -9,14 +9,15 @@ import scala.meta.internal.metals.TextEdits
 import munit.TestOptions
 import org.eclipse.{lsp4j => l}
 import tests.BaseCodeActionSuite
+import java.nio.file.Paths
 
 class AutoImplementAbstractMembersSuite extends BaseCodeActionSuite {
 
-  override def ignoreScalaVersion: Option[IgnoreScalaVersion] =
-    Some(IgnoreScala3)
+  // override def ignoreScalaVersion: Option[IgnoreScalaVersion] =
+  //   Some(IgnoreScala3)
 
   checkEdit(
-    "classdef",
+    "classdef".only,
     """|package a
        |
        |object A {
@@ -724,7 +725,12 @@ class AutoImplementAbstractMembersSuite extends BaseCodeActionSuite {
     val (code, _, offset) = params(original)
     val result = presentationCompiler
       .implementAbstractMembers(
-        CompilerOffsetParams(URI.create(filename), code, offset, cancelToken)
+        CompilerOffsetParams(
+          Paths.get(filename).toUri(),
+          code,
+          offset,
+          cancelToken
+        )
       )
       .get()
     result.asScala.toList
