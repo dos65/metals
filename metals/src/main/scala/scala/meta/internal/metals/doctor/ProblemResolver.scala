@@ -225,9 +225,32 @@ class ProblemResolver(
       case Right(_) => None
     }
 
-    // 1.0.0-M3 or higher is valid
-    def outdatedMunitInterface =
-      if (!isTestExplorerProvider()) None
+    /**
+     * MUnit 1.0.0-M3 or higher is capable of running single tests
+     * Do not show warning when:
+     * - build server doesn't return test framework name - without it Metals isn't able to discover single tests
+     * - build target is a sbt one
+     * - client doesn't implement Test Explorer
+     */
+    def outdatedMunitInterface = {
+      def returnTestFrameworkName =
+        currentBuildServer()
+          .map(_.main)
+          .forall(conn =>
+            // https://github.com/sbt/sbt/pull/6830 will be available from 1.7.0
+            if (conn.isSbt) SemVer.isCompatibleVersion("1.7.0", conn.version)
+            // https://github.com/com-lihaoyi/mill/pull/1755 should be available from 0.10.4
+            else if (conn.isMill)
+              SemVer.isCompatibleVersion("0.10.4", conn.version)
+            else true
+          )
+
+      val shouldNotDisplay =
+        !isTestExplorerProvider() ||
+          scalaTarget.isSbt ||
+          !returnTestFrameworkName
+
+      if (shouldNotDisplay) None
       else {
         def isInvalid(
             major: Int,
@@ -242,16 +265,17 @@ class ProblemResolver(
           } else false
         }
 
-        val munit = raw".*org/scalameta/munit/(\d).(\d+).(\d+).*".r
+        val munit = raw".*org/scalameta/munit_.*/(\d).(\d+).(\d+).*".r
         scalaTarget.scalac.getClasspath().asScala.collectFirst {
           case dep @ munit(major, minor, patch)
               if isInvalid(major.toInt, minor.toInt, patch.toInt, dep) =>
             OutdatedMunitInterfaceVersion
         }
       }
+    }
 
     def outdatedJunitInterface =
-      if (!isTestExplorerProvider()) None
+      if (!isTestExplorerProvider() || scalaTarget.isSbt) None
       else {
         val novocode = ".*com/novocode/junit-interface.*".r
         val junit = raw".*com/github/sbt/junit-interface/(\d).(\d+).(\d+).*".r

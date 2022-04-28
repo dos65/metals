@@ -37,8 +37,8 @@ class SignatureHelpPatternSuite extends BaseSignatureHelpSuite {
       |  }
       |}
       |""".stripMargin,
-    """|(value: A)
-       | ^^^^^^^^
+    """|(Int)
+       | ^^^
        |""".stripMargin
   )
 
@@ -52,8 +52,8 @@ class SignatureHelpPatternSuite extends BaseSignatureHelpSuite {
       |  }
       |}
       |""".stripMargin,
-    """|(a: T, b: T)
-       | ^^^^
+    """|(Any, Any)
+       | ^^^
        |""".stripMargin
   )
 
@@ -67,8 +67,43 @@ class SignatureHelpPatternSuite extends BaseSignatureHelpSuite {
       |  }
       |}
       |""".stripMargin,
-    """|(a: C[T])
-       | ^^^^^^^
+    """|(Any)
+       | ^^^
+       |""".stripMargin
+  )
+
+  check(
+    "generic4",
+    """
+      |  case class Two[A, B](a: A, b: B)
+      |  object Main {
+      |    new Two(1, "") match {
+      |      case Two(@@) =>
+      |    }
+      |  }
+      |""".stripMargin,
+    """|(Int, String)
+       | ^^^
+       |""".stripMargin
+  )
+
+  check(
+    "generic5",
+    """
+      |class Two[A, B](a: A, b: B)
+      |object Two {
+      |  def unapply[A, B](t: Two[A, B]): Option[(A, B)] = None
+      |}
+      |
+      |object Main {
+      |  val tp = new Two(1, "") 
+      |  tp match {
+      |    case Two(@@) =>
+      |  }
+      |}
+      |""".stripMargin,
+    """|(Int, String)
+       | ^^^
        |""".stripMargin
   )
 
@@ -117,8 +152,8 @@ class SignatureHelpPatternSuite extends BaseSignatureHelpSuite {
       |    case Person(@@)
       |}
     """.stripMargin,
-    """|(name: String, age: Int)
-       | ^^^^^^^^^^^^
+    """|(String, Int)
+       | ^^^^^^
        | """.stripMargin
   )
 
@@ -135,8 +170,8 @@ class SignatureHelpPatternSuite extends BaseSignatureHelpSuite {
       |  }
       |}
     """.stripMargin,
-    """|(name: String, age: Int)
-       | ^^^^^^^^^^^^
+    """|(String, Int)
+       | ^^^^^^
        | """.stripMargin
   )
 
@@ -150,9 +185,8 @@ class SignatureHelpPatternSuite extends BaseSignatureHelpSuite {
       |  }
       |}
     """.stripMargin,
-    """|(String)
-       | ^^^^^^
-       |(Char)
+    """|(List[A])
+       | ^^^^^^^
        |""".stripMargin
   )
 
@@ -167,10 +201,10 @@ class SignatureHelpPatternSuite extends BaseSignatureHelpSuite {
       |    case And("", s@@)
       |  }
       |}
-  """.stripMargin,
-    """|(A, A)
-       |    ^
-       | """.stripMargin
+      |""".stripMargin,
+    """|(String, String)
+       |         ^^^^^^
+       |""".stripMargin
   )
 
   check(
@@ -192,6 +226,57 @@ class SignatureHelpPatternSuite extends BaseSignatureHelpSuite {
     // `pat3` without regressing signature help in othere cases like partial functions that
     // generate qualifiers with offset positions.
     ""
+  )
+
+  check(
+    "pat5",
+    """
+      |object OpenBrowserCommand {
+      |  def unapply(command: String): Option[Int] = {
+      |    Some(1)
+      |  }
+      |
+      |  "" match {
+      |    case OpenBrowserCommand(@@) =>
+      |  }
+      |}
+    """.stripMargin,
+    """|(Int)
+       | ^^^
+       |""".stripMargin
+  )
+
+  check(
+    "pat6",
+    """
+      |object OpenBrowserCommand {
+      |  def unapply(command: String): Option[Option[Int]] = {
+      |    Some(Some(1))
+      |  }
+      |
+      |  "" match {
+      |    case OpenBrowserCommand(@@) =>
+      |  }
+      |}
+    """.stripMargin,
+    """|(Option[A])
+       | ^^^^^^^^^
+       |""".stripMargin
+  )
+
+  check(
+    "pat-negative",
+    """
+      |object And {
+      |  def unapply[A](a: A): Some[(A, A)] = Some((a, a))
+      |}
+      |object a {
+      |  And.unapply(@@)
+      |}
+    """.stripMargin,
+    """|unapply[A](a: A): Some[(A, A)]
+       |           ^^^^
+       | """.stripMargin
   )
 
 }

@@ -5,7 +5,7 @@ import Tests._
 
 Global / onChangedBuildSource := ReloadOnSourceChanges
 
-def localSnapshotVersion = "0.11.3-SNAPSHOT"
+def localSnapshotVersion = "0.11.5-SNAPSHOT"
 def isCI = System.getenv("CI") != null
 
 def isScala211(v: Option[(Long, Long)]): Boolean = v.contains((2, 11))
@@ -403,7 +403,7 @@ lazy val metals = project
       "org.scalameta" % "semanticdb-scalac-core" % V.scalameta cross CrossVersion.full,
       // For starting Ammonite
       "io.github.alexarchambault.ammonite" %% "ammonite-runner" % "0.3.2",
-      "org.scala-lang.modules" %% "scala-xml" % "2.0.1",
+      "org.scala-lang.modules" %% "scala-xml" % "2.1.0",
       "org.scala-lang.modules" %% "scala-parallel-collections" % "1.0.4"
     ),
     buildInfoPackage := "scala.meta.internal.metals",
@@ -449,7 +449,8 @@ lazy val `sbt-metals` = project
     buildInfoPackage := "scala.meta.internal.sbtmetals",
     buildInfoKeys := Seq[BuildInfoKey](
       "semanticdbVersion" -> V.semanticdb,
-      "supportedScala2Versions" -> V.scala2Versions
+      "supportedScala2Versions" -> V.scala2Versions,
+      "javaSemanticdbVersion" -> V.javaSemanticdb
     ),
     scalaVersion := V.scala212,
     scriptedLaunchOpts ++= Seq(s"-Dplugin.version=${version.value}")

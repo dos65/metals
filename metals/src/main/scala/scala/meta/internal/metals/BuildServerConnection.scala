@@ -17,6 +17,7 @@ import scala.concurrent.Promise
 import scala.reflect.ClassTag
 import scala.util.Try
 
+import scala.meta.internal.builds.MillBuildTool
 import scala.meta.internal.builds.SbtBuildTool
 import scala.meta.internal.metals.MetalsEnrichments._
 import scala.meta.internal.pc.InterruptException
@@ -66,6 +67,8 @@ class BuildServerConnection private (
   def isBloop: Boolean = name == BloopServers.name
 
   def isSbt: Boolean = name == SbtBuildTool.name
+
+  def isMill: Boolean = name == MillBuildTool.name
 
   // although hasDebug is already available in BSP capabilities
   // see https://github.com/build-server-protocol/build-server-protocol/pull/161
@@ -152,7 +155,7 @@ class BuildServerConnection private (
   }
 
   def startDebugSession(params: DebugSessionParams): Future[URI] = {
-    register(server => server.startDebugSession(params)).asScala
+    register(server => server.debugSessionStart(params)).asScala
       .map(address => URI.create(address.getUri))
   }
 
