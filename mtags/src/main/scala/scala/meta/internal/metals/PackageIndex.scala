@@ -55,8 +55,9 @@ class PackageIndex() {
 
   def addMember(pkg: String, member: String): Unit = {
     if (!member.contains("module-info.class")) {
+      val decoded = BinaryNameDecoder.decode(member)
       val members = packages.computeIfAbsent(pkg, enterPackage)
-      members.add(member)
+      members.add(decoded)
     }
   }
 
