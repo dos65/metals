@@ -14,9 +14,9 @@ object V {
 
   val ammonite = "2.5.4-34-1c7b3c38"
   val betterMonadicFor = "0.3.1"
-  val bloop = "1.5.4"
+  val bloop = "1.5.3-43-bbaefa69-20221027-2125"
   val bloopNightly = bloop
-  val bsp = "2.1.0-M1"
+  val bsp = "2.1.0-M1+27-17c3549f-SNAPSHOT"
   val coursier = "2.1.0-M7"
   val coursierInterfaces = "1.0.9"
   val debugAdapter = "2.2.0"
@@ -96,7 +96,15 @@ object V {
 
   // Scala 3
   def nonDeprecatedScala3Versions =
-    Seq(nextScala3RC, "3.2.1-RC1", scala3, "3.1.3", "3.1.2", "3.1.1")
+    Seq(
+      "3.2.1-RC1-bin-SNAPSHOT",
+      nextScala3RC,
+      "3.2.1-RC1",
+      scala3,
+      "3.1.3",
+      "3.1.2",
+      "3.1.1",
+    )
   def deprecatedScala3Versions =
     Seq("3.2.0-RC4", "3.2.0-RC3", "3.1.0", "3.0.2", "3.0.1", "3.0.0")
   def scala3Versions = nonDeprecatedScala3Versions ++ deprecatedScala3Versions
@@ -118,13 +126,14 @@ object V {
 
   val quickPublishScalaVersions =
     Set(
-      scala211,
-      sbtScala,
-      scala212,
-      ammonite212Version,
-      scala213,
-      ammonite213Version,
-      scala3,
-      ammonite3Version,
+      // scala211,
+      // sbtScala,
+      // scala212,
+      // ammonite212Version,
+      // scala213,
+      // ammonite213Version,
+      // scala3,
+      // ammonite3Version,
+      "3.2.1-RC1-bin-SNAPSHOT"
     ).toList
 }

@@ -14,7 +14,7 @@ class DefinitionLspSuite extends BaseLspSuite("definition") {
       statistics = new StatisticsConfig("diagnostics")
     )
 
-  test("definition") {
+  test("definition".only) {
     for {
       _ <- initialize(
         """|

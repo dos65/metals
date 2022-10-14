@@ -86,6 +86,9 @@ case class ScalaTarget(
         path.toNIO
     }
 
+  def signaturesPath: Option[Path] =
+    Option(scalac.getSignaturesDirectory()).map(_.toAbsolutePath.toNIO)
+
   def classDirectory: String = scalac.getClassDirectory()
 
   def scalaVersion: String = scalaInfo.getScalaVersion()

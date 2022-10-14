@@ -365,6 +365,7 @@ object Bill {
               List().asJava,
               scalaJars,
               out.toURI.toASCIIString,
+              null,
             )
           ).asJava
         )
@@ -385,6 +386,9 @@ object Bill {
         params: DebugSessionParams
     ): CompletableFuture[DebugSessionAddress] = ???
 
+    override def buildTargetOutputPaths(
+        params: OutputPathsParams
+    ): CompletableFuture[OutputPathsResult] = ???
   }
 
   def myClassLoader: ClassLoader =

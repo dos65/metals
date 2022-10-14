@@ -239,18 +239,18 @@ class Compilers(
   }
 
   def didCompile(report: CompileReport): Unit = {
-    if (report.getErrors > 0) {
-      buildTargetPCFromCache(report.getTarget).foreach(_.restart())
-    } else {
-      // Restart PC for all build targets that depend on this target since the classfiles
-      // may have changed.
-      for {
-        target <- buildTargets.allInverseDependencies(report.getTarget)
-        compiler <- buildTargetPCFromCache(target)
-      } {
-        compiler.restart()
-      }
+    // if (report.getErrors > 0) {
+    //   buildTargetPCFromCache(report.getTarget).foreach(_.restart())
+    // } else {
+    //   // Restart PC for all build targets that depend on this target since the classfiles
+    //   // may have changed.
+    for {
+      target <- buildTargets.allInverseDependencies(report.getTarget)
+      compiler <- buildTargetPCFromCache(target)
+    } {
+      compiler.restart()
     }
+    // }
   }
 
   def completionItemResolve(
@@ -817,6 +817,11 @@ class Compilers(
   ): PresentationCompiler = {
     val classpath =
       target.scalac.classpath.toAbsoluteClasspath.map(_.toNIO).toSeq
+
+    println(s"AAA: ${target.info.getId()}")
+    println(target.info.getDependencies())
+    println("~~~~~~~~")
+    println(buildTargets.allInverseDependencies(target.info.getId()))
     newCompiler(target, mtags, classpath, search)
   }
 
