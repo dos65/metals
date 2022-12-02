@@ -104,6 +104,7 @@ def configureMtagsScalaVersionDynamically(
     List(
       mtest / scalaVersion := scalaV,
       mtags / scalaVersion := scalaV,
+      `mtags-core` / scalaVersion := scalaV,
       cross / scalaVersion := scalaV,
     )
   val extracted = Project.extract(state)
@@ -260,25 +261,20 @@ def multiScalaDirectories(root: File, scalaVersion: String) = {
   result.toList
 }
 
-val mtagsSettings = List(
+lazy val mtagsCoreSettings = List(
   crossScalaVersions := {
     V.supportedScalaVersions ++ V.nightlyScala3Versions
   },
   crossTarget := target.value / s"scala-${scalaVersion.value}",
   crossVersion := CrossVersion.full,
   Compile / unmanagedSourceDirectories ++= multiScalaDirectories(
-    (ThisBuild / baseDirectory).value / "mtags",
+    (ThisBuild / baseDirectory).value / "mtags-core",
     scalaVersion.value,
   ),
   // @note needed to deal with issues with dottyDoc
   Compile / doc / sources := Seq.empty,
   libraryDependencies ++= Seq(
-    "com.lihaoyi" %% "geny" % V.genyVersion,
-    "com.thoughtworks.qdox" % "qdox" % V.qdox, // for java mtags
-    "org.scala-lang.modules" %% "scala-java8-compat" % V.java8Compat,
-    "org.jsoup" % "jsoup" % V.jsoup, // for extracting HTML from javadocs
-    // for ivy completions
-    "io.get-coursier" % "interface" % V.coursierInterfaces,
+    "com.lihaoyi" %% "geny" % V.genyVersion
   ),
   libraryDependencies ++= crossSetting(
     scalaVersion.value,
@@ -302,6 +298,20 @@ val mtagsSettings = List(
           "sourcecode_2.13",
         ), // avoid 2.13 and 3 on the classpath since it comes in via pprint
     ),
+  ),
+)
+
+val mtagsSettings = mtagsCoreSettings ++ List(
+  Compile / unmanagedSourceDirectories ++= multiScalaDirectories(
+    (ThisBuild / baseDirectory).value / "mtags",
+    scalaVersion.value,
+  ),
+  libraryDependencies ++= Seq(
+    "com.thoughtworks.qdox" % "qdox" % V.qdox, // for java mtags
+    "org.scala-lang.modules" %% "scala-java8-compat" % V.java8Compat,
+    "org.jsoup" % "jsoup" % V.jsoup, // for extracting HTML from javadocs
+    // for ivy completions
+    "io.get-coursier" % "interface" % V.coursierInterfaces,
   ),
   libraryDependencies ++= List("org.lz4" % "lz4-java" % "1.8.0"),
   libraryDependencies ++= {
@@ -336,6 +346,7 @@ lazy val mtags3 = project
     sharedSettings,
     mtagsSettings,
     Compile / unmanagedSourceDirectories += (ThisBuild / baseDirectory).value / "mtags" / "src" / "main" / "scala",
+    Compile / unmanagedSourceDirectories += (ThisBuild / baseDirectory).value / "mtags-core" / "src" / "main" / "scala",
     moduleName := "mtags3",
     scalaVersion := V.scala3,
     target := (ThisBuild / baseDirectory).value / "mtags" / "target" / "target3",
@@ -353,7 +364,20 @@ lazy val mtags = project
     mtagsSettings,
     moduleName := "mtags",
   )
+  .dependsOn(interfaces, `mtags-core`)
+  .enablePlugins(BuildInfoPlugin)
+
+lazy val `mtags-core` = project
+  .settings(
+    sharedSettings,
+    moduleName := "mtags-core",
+    mtagsCoreSettings,
+  )
   .dependsOn(interfaces)
+
+lazy val `mtags-java` = project
+  .configure(JavaPcSettings.settings(sharedSettings))
+  .dependsOn(interfaces, `mtags-core`)
   .enablePlugins(BuildInfoPlugin)
 
 lazy val metals = project
@@ -477,7 +501,7 @@ lazy val metals = project
       "scala3" -> V.scala3,
     ),
   )
-  .dependsOn(mtags)
+  .dependsOn(mtags, `mtags-java`)
   .enablePlugins(BuildInfoPlugin)
 
 lazy val `sbt-metals` = project
@@ -552,15 +576,18 @@ def runMtagsPublishLocal(
     .appendWithSession(
       List(
         mtags / scalaVersion := scalaV,
+        `mtags-core` / scalaVersion := scalaV,
         ThisBuild / version := projectV,
         ThisBuild / useSuperShell := false,
       ),
       state,
     )
-  val (s, _) = Project
-    .extract(newState)
-    .runTask(mtags / publishLocal, newState)
-  s
+  List(mtags, `mtags-core`).foldLeft(newState) { case (st, pr) =>
+    val (s, _) = Project
+      .extract(st)
+      .runTask(pr / publishLocal, st)
+    s
+  }
 }
 
 def crossPublishLocal(scalaV: String) =
@@ -586,7 +613,9 @@ def publishAllMtags(
 def publishBinaryMtags =
   (interfaces / publishLocal)
     .dependsOn(
-      publishAllMtags(V.quickPublishScalaVersions)
+      `mtags-core` / publishLocal,
+      `mtags-java` / publishLocal,
+      publishAllMtags(V.quickPublishScalaVersions),
     )
 
 lazy val mtest = project
@@ -629,6 +658,14 @@ lazy val cross = project
     crossScalaVersions := V.nonDeprecatedScalaVersions,
   )
   .dependsOn(mtest, mtags)
+
+lazy val javapc = project
+  .in(file("tests/javapc"))
+  .settings(
+    testSettings,
+    sharedSettings,
+  )
+  .dependsOn(mtest, `mtags-java`)
 
 def isInTestShard(name: String, logger: Logger): Boolean = {
   val groupIndex = TestGroups.testGroups.indexWhere(group => group(name))

@@ -210,4 +210,6 @@ object PackageIndex {
 
   def dottyLibrary: Seq[Path] = findJar("dotty-library")
 
+  def javaLibrary: Seq[Path] = findJar("java.base")
+
 }
