@@ -75,10 +75,6 @@ object JavaPcSettings {
             )
           else Nil
         },
-        buildInfoPackage := "scala.meta.internal.mtags",
-        buildInfoKeys := Seq[BuildInfoKey](
-          "scalaCompilerVersion" -> scalaVersion.value
-        ),
       )
   }
 }

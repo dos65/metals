@@ -14,7 +14,6 @@ import scala.concurrent.ExecutionContext
 import scala.concurrent.ExecutionContextExecutor
 import scala.jdk.CollectionConverters._
 
-import scala.meta.internal.mtags.BuildInfo
 import scala.meta.pc.AutoImportsResult
 import scala.meta.pc.DefinitionResult
 import scala.meta.pc.HoverSignature
@@ -182,7 +181,7 @@ case class JavaPresentationCompiler(
 
   override def isLoaded: Boolean = true
 
-  override def scalaVersion(): String = BuildInfo.scalaCompilerVersion
+  override def scalaVersion(): String = "java"
 
   override def prepareRename(
       params: OffsetParams

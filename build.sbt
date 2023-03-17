@@ -378,7 +378,6 @@ lazy val `mtags-core` = project
 lazy val `mtags-java` = project
   .configure(JavaPcSettings.settings(sharedSettings))
   .dependsOn(interfaces, `mtags-core`)
-  .enablePlugins(BuildInfoPlugin)
 
 lazy val metals = project
   .settings(
