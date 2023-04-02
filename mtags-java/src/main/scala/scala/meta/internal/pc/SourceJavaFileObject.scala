@@ -1,6 +1,5 @@
 package scala.meta.internal.pc
 
-import java.io.File
 import java.net.URI
 import javax.tools.JavaFileObject.Kind
 import javax.tools.SimpleJavaFileObject
@@ -11,11 +10,14 @@ class SourceJavaFileObject(src: String, uri: URI, kind: Kind)
 }
 
 object SourceJavaFileObject {
-  def make(code: String): SourceJavaFileObject = {
-    val out = new StringBuilder()
-    out.append(code)
+  def make(code: String, uri: URI): SourceJavaFileObject = {
+    // parent `javax.tools.SimpleJavaObject` fails if URI doesn't have path
+    val relativeUri =
+      if (uri.getScheme() == "jar") {
+        val parts = uri.getSchemeSpecificPart().split("!")
+        if (parts.length == 2) URI.create(parts(1)) else uri
+      } else uri
 
-    val tmpFile = File.createTempFile("code-", ".java")
-    new SourceJavaFileObject(code, URI.create(tmpFile.getPath), Kind.SOURCE)
+    new SourceJavaFileObject(code, relativeUri, Kind.SOURCE)
   }
 }

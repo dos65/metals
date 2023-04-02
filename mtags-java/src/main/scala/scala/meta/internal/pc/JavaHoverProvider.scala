@@ -49,7 +49,7 @@ class JavaHoverProvider(
   }
 
   def hoverOffset(params: OffsetParams): Option[HoverSignature] = {
-    val task: JavacTask = compiler.compilationTask(params.text())
+    val task: JavacTask = compiler.compilationTask(params.text(), params.uri())
     val scanner = compiler.scanner(task)
     val position = params match {
       case p: RangeParams =>

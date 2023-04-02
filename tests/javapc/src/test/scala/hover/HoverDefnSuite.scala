@@ -1,6 +1,7 @@
 package hover
 
 import tests.pc.BaseJavaHoverSuite
+import java.net.URI
 
 class HoverDefnSuite extends BaseJavaHoverSuite {
   check(
@@ -144,5 +145,22 @@ class HoverDefnSuite extends BaseJavaHoverSuite {
       |}
       |""".stripMargin,
     "static int foo(int[] a)".javaHover, // todo investigate
+  )
+
+  check(
+    "jar uri",
+    """
+      |class A {
+      |    public static int NUMBER = 42;
+      |
+      |    public static void main(String args[]){
+      |        int x = NU@@MBER;
+      |    }
+      |}
+      |""".stripMargin,
+    """
+      |public static int NUMBER
+      |""".stripMargin.javaHover,
+    uri = URI.create("jar:file:/path/sample.jar!/src/main/java/A.java"),
   )
 }
