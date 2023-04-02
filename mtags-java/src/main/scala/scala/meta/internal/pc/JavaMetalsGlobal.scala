@@ -10,6 +10,7 @@ import scala.meta.pc.SymbolSearch
 
 import com.sun.source.util.JavacTask
 import com.sun.source.util.TreePath
+import java.net.URI
 
 class JavaMetalsGlobal(
     val search: SymbolSearch,
@@ -19,8 +20,8 @@ class JavaMetalsGlobal(
   private val COMPILER: JavaCompiler =
     ServiceLoader.load(classOf[JavaCompiler]).iterator.next
 
-  def compilationTask(sourceCode: String): JavacTask = {
-    val javaFileObject = SourceJavaFileObject.make(sourceCode)
+  def compilationTask(sourceCode: String, uri: URI): JavacTask = {
+    val javaFileObject = SourceJavaFileObject.make(sourceCode, uri)
 
     COMPILER
       .getTask(

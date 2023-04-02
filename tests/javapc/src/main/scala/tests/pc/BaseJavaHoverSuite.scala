@@ -9,6 +9,7 @@ import scala.meta.internal.mtags.MtagsEnrichments._
 import munit.Location
 import munit.TestOptions
 import tests.TestHovers
+import java.net.URI
 
 class BaseJavaHoverSuite extends BaseJavaPCSuite with TestHovers { // todo: General Logic
 
@@ -18,6 +19,7 @@ class BaseJavaHoverSuite extends BaseJavaPCSuite with TestHovers { // todo: Gene
       expected: String,
       includeRange: Boolean = false,
       automaticPackage: Boolean = true,
+      uri: URI = Paths.get("Hover.java").toUri(),
   )(implicit loc: Location): Unit = {
     test(testOpt) {
       val filename = "Hover.java"
@@ -32,9 +34,9 @@ class BaseJavaHoverSuite extends BaseJavaPCSuite with TestHovers { // todo: Gene
       val (code, so, eo) = hoverParams(codeOriginal, filename)
 
       val pcParams = if (so == eo) {
-        CompilerOffsetParams(Paths.get(filename).toUri, code, so)
+        CompilerOffsetParams(uri, code, so)
       } else {
-        CompilerRangeParams(Paths.get(filename).toUri, code, so, eo)
+        CompilerRangeParams(uri, code, so, eo)
       }
       val hover = presentationCompiler
         .hover(pcParams)
