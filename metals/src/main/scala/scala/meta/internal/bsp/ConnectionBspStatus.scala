@@ -140,8 +140,8 @@ object ConnectionBspStatus {
       "warn",
       show = true,
       tooltip = message.trimTo(TOOLTIP_MAX_LENGTH),
-      command = ServerCommands.RunDoctor.id,
-      commandTooltip = "Open doctor.",
+      // command = ServerCommands.RunDoctor.id,
+      // commandTooltip = "Open doctor.",
     ).withStatusType(StatusType.bsp)
 
   private val TOOLTIP_MAX_LENGTH = 150
