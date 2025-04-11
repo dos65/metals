@@ -20,6 +20,8 @@ import org.eclipse.lsp4j.Diagnostic
 import org.eclipse.lsp4j.DiagnosticSeverity
 import org.eclipse.{lsp4j => l}
 
+import scala.meta.pc.TreesInterface
+
 /**
  * Manages parsing of Scala source files into Scalameta syntax trees.
  *
@@ -30,7 +32,8 @@ import org.eclipse.{lsp4j => l}
 final class Trees(
     buffers: Buffers,
     scalaVersionSelector: ScalaVersionSelector,
-)(implicit reports: ReportContext) {
+)(implicit reports: ReportContext)
+    extends TreesInterface {
 
   private val trees = TrieMap.empty[AbsolutePath, Tree]
 
@@ -39,6 +42,9 @@ final class Trees(
       // Fallback to parse without caching result.
       parse(path, scalaVersionSelector.getDialect(path)).flatMap(_.toOption)
     }
+
+  def getTree(path: java.nio.file.Path): java.util.Optional[scala.meta.Tree] =
+    get(AbsolutePath(path)).asJava
 
   def didClose(fileUri: AbsolutePath): Unit = {
     trees.remove(fileUri)

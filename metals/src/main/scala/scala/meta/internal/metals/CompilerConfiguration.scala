@@ -271,6 +271,7 @@ class CompilerConfiguration(
       .withWorkspace(workspace.toNIO)
       .withScheduledExecutorService(sh)
       .withReportsLoggerLevel(MetalsServerConfig.default.loglevel)
+      .withTreesInterface(trees)
       .withConfiguration {
         val options =
           InitializationOptions.from(initializeParams).compilerOptions

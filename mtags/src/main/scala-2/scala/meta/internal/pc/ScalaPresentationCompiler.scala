@@ -55,6 +55,7 @@ import org.eclipse.lsp4j.Range
 import org.eclipse.lsp4j.SelectionRange
 import org.eclipse.lsp4j.SignatureHelp
 import org.eclipse.lsp4j.TextEdit
+import scala.meta.pc.TreesInterface
 
 case class ScalaPresentationCompiler(
     buildTargetIdentifier: String = "",
@@ -67,7 +68,8 @@ case class ScalaPresentationCompiler(
     config: PresentationCompilerConfig = PresentationCompilerConfigImpl(),
     folderPath: Option[Path] = None,
     reportsLevel: ReportLevel = ReportLevel.Info,
-    completionItemPriority: CompletionItemPriority = (_: String) => 0
+    completionItemPriority: CompletionItemPriority = (_: String) => 0,
+    treesInterface: Option[TreesInterface] = None
 ) extends PresentationCompiler {
 
   implicit val executionContext: ExecutionContextExecutor = ec
@@ -115,6 +117,11 @@ case class ScalaPresentationCompiler(
       priority: CompletionItemPriority
   ): PresentationCompiler =
     copy(completionItemPriority = priority)
+
+  override def withTreesInterface(
+      trees: TreesInterface
+  ): PresentationCompiler =
+    copy(treesInterface = Some(trees))
 
   override def supportedCodeActions(): util.List[String] = List(
     CodeActionId.ConvertToNamedArguments,
@@ -221,7 +228,8 @@ case class ScalaPresentationCompiler(
       params.token
     ) { pc =>
       val res =
-        new CompletionProvider(pc.compiler(params), params).completions()
+        new CompletionProvider(pc.compiler(params), treesInterface, params)
+          .completions()
       scribe.info(s"[scala presentation compiler]got completions: ${res}")
       res
     }
@@ -274,7 +282,8 @@ case class ScalaPresentationCompiler(
       empty,
       params.token
     ) { pc =>
-      new CompletionProvider(pc.compiler(params), params).implementAll()
+      new CompletionProvider(pc.compiler(params), treesInterface, params)
+        .implementAll()
     }
   }
 

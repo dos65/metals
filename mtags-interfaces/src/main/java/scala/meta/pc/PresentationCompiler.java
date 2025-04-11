@@ -308,6 +308,10 @@ public abstract class PresentationCompiler {
 		return this;
 	}
 
+	public PresentationCompiler withTreesInterface(TreesInterface trees) {
+		return this;
+	}
+
 	/**
 	 * Construct a new presentation compiler with the given parameters.
 	 *

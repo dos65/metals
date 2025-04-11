@@ -226,7 +226,8 @@ lazy val interfaces = project
     ),
     crossPaths := false,
     libraryDependencies ++= List(
-      V.lsp4j
+      V.lsp4j,
+      "org.scalameta" %% "scalameta" % V.scalameta,
     ),
     javacOptions := Seq("--release", "8"),
     crossVersion := CrossVersion.disabled,

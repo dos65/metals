@@ -18,9 +18,11 @@ import org.eclipse.lsp4j.CompletionItemTag
 import org.eclipse.lsp4j.CompletionList
 import org.eclipse.lsp4j.InsertTextFormat
 import org.eclipse.{lsp4j => l}
+import scala.meta.pc.TreesInterface
 
 class CompletionProvider(
     val compiler: MetalsGlobal,
+    trees: Option[TreesInterface],
     params: OffsetParams
 )(implicit val queryInfo: PcQueryContext) {
   import compiler._
@@ -288,6 +290,9 @@ class CompletionProvider(
                 s"get if values: ${(w.additionalTextEdits ne null)}, ${w.additionalTextEdits.nonEmpty}, ${edits}"
               )
               scribe.info(s"autoImportPos: ${lastImportPos.map(_.line)}")
+              scribe.info(
+                s"????? ${trees.get.getTree(params.uri().toAbsolutePath.toNIO)}"
+              )
               if (
                 (w.additionalTextEdits ne null) && w.additionalTextEdits.nonEmpty || edits.nonEmpty
               ) {
