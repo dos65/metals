@@ -92,6 +92,7 @@ class Compilers(
     sourceMapper: SourceMapper,
     worksheetProvider: WorksheetProvider,
     completionItemPriority: () => CompletionItemPriority,
+    scalafixProvider: () => ScalafixProvider,
 )(implicit ec: ExecutionContextExecutorService, rc: ReportContext)
     extends Cancelable {
 
@@ -158,19 +159,29 @@ class Compilers(
                 lazyPc
               } else {
                 presentationCompiler.shutdown()
+                val scalafix = scala.concurrent.Await.result(
+                  scalafixProvider().getScalafix(scalaVersion),
+                  scala.concurrent.duration.Duration.Inf,
+                )
                 StandaloneCompiler(
                   scalaVersion,
                   search,
                   Nil,
                   completionItemPriority(),
+                  scalafix.loadOrganizeImports(),
                 )
               }
             case None =>
+              val scalafix = scala.concurrent.Await.result(
+                scalafixProvider().getScalafix(scalaVersion),
+                scala.concurrent.duration.Duration.Inf,
+              )
               StandaloneCompiler(
                 scalaVersion,
                 search,
                 Nil,
                 completionItemPriority(),
+                scalafix.loadOrganizeImports(),
               )
           }
         },
@@ -1846,12 +1857,18 @@ class Compilers(
         path, {
           val scalaVersion =
             scalaVersionSelector.fallbackScalaVersion(isAmmonite = false)
+
+          val scalafix = scala.concurrent.Await.result(
+            scalafixProvider().getScalafix(scalaVersion),
+            scala.concurrent.duration.Duration.Inf,
+          )
           StandaloneCompiler(
             scalaVersion,
             classpath,
             sources,
             Some(search),
             completionItemPriority(),
+            scalafix.loadOrganizeImports(),
           )
         },
       )
@@ -1895,12 +1912,18 @@ class Compilers(
             workDoneProgress.trackBlocking(
               s"${config.icons().sync}Loading presentation compiler"
             ) {
+              // TODO
+              val scalafix = scala.concurrent.Await.result(
+                scalafixProvider().getScalafix(scalaVersion),
+                scala.concurrent.duration.Duration.Inf,
+              )
               // есть референс на сёрч
               ScalaLazyCompiler(
                 scalaTarget,
                 mtags,
                 search,
                 completionItemPriority(),
+                scalafix.loadOrganizeImports(),
               )
             }
           val key =

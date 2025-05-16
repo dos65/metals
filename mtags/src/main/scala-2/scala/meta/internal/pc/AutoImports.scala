@@ -50,16 +50,16 @@ trait AutoImports { this: MetalsGlobal =>
             val lastImportOpt = pkg.stats
               .takeWhile(_.isInstanceOf[Import])
               .lastOption
-            scribe.info(s"lastImportOpt: ${lastImportOpt}")
+            // scribe.info(s"lastImportOpt: ${lastImportOpt}")
             val padTop = lastImportOpt.isEmpty
             val lastImportOrPkg = lastImportOpt.getOrElse(pkg.pid)
-            scribe.info(s"lastImportOrPkg: ${lastImportOrPkg}")
-            // here is pos creation
-            scribe.info(s"what is pos: ${pos}")
-            scribe.info(s"what is pos.source: ${pos.source}")
-            scribe.info(
-              s"what is lastImportOrPkg.pos.focusEnd: ${lastImportOrPkg.pos.focusEnd}"
-            )
+            // scribe.info(s"lastImportOrPkg: ${lastImportOrPkg}")
+            // // here is pos creation
+            // scribe.info(s"what is pos: ${pos}")
+            // scribe.info(s"what is pos.source: ${pos.source}")
+            // scribe.info(
+            //   s"what is lastImportOrPkg.pos.focusEnd: ${lastImportOrPkg.pos.focusEnd}"
+            // )
 
             // from this generates final position. Fixes should be here, i guess
 
@@ -75,7 +75,7 @@ trait AutoImports { this: MetalsGlobal =>
                 text,
                 padTop
               )
-            scribe.info(s"here is autoImportPosition: ${aipos}")
+            // scribe.info(s"here is autoImportPosition: ${aipos}")
             aipos
           }
 
@@ -137,9 +137,9 @@ trait AutoImports { this: MetalsGlobal =>
           else if (path.isScalaCLIGeneratedFile) forScript(isAmmonite = false)
           else None
 
-        scribe.info(
-          s"here is sources, scriptPos ${scriptPos}, forScalaSource: ${forScalaSource}, fileStart:${fileStart}"
-        )
+        // scribe.info(
+        //   s"here is sources, scriptPos ${scriptPos}, forScalaSource: ${forScalaSource}, fileStart:${fileStart}"
+        // )
         scriptPos
           .orElse(forScalaSource)
           .orElse(Some(fileStart))

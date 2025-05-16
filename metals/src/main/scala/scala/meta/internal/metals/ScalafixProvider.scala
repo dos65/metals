@@ -574,7 +574,7 @@ case class ScalafixProvider(
     }
   }
 
-  private def getScalafix(
+  def getScalafix(
       scalaVersion: ScalaVersion
   ): Future[Scalafix] = Future {
     scalafixCache.getOrElseUpdate(

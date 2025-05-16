@@ -46,7 +46,7 @@ class CompletionProvider(
   }
 
   def completions(): CompletionList = {
-    scribe.info("calling completions of completionProvider")
+    // scribe.info("calling completions of completionProvider")
     val filename = params.uri().toString()
     val unit = addCompilationUnit(
       code = params.text,
@@ -56,7 +56,7 @@ class CompletionProvider(
     )
 
     val pos = unit.position(params.offset)
-    scribe.info(s"count unit position: ${pos}")
+    // scribe.info(s"count unit position: ${pos}")
     val isSnippet = isSnippetEnabled(pos, params.text())
 
     val (i, completion, identOffsets, editRange, query) =
@@ -83,7 +83,7 @@ class CompletionProvider(
     // hmm
     lazy val importPosition = autoImportPosition(pos, params.text())
 
-    scribe.info(s"importPosition lazy: ${importPosition}")
+    // scribe.info(s"importPosition lazy: ${importPosition}")
     lazy val context = doLocateImportContext(pos)
 
     @tailrec
@@ -106,7 +106,7 @@ class CompletionProvider(
       }
     }
 
-    scribe.info(s"what is sorted looks like: ${sorted}")
+    // scribe.info(s"what is sorted looks like: ${sorted}")
     val items = sorted.iterator.zipWithIndex.map { case (member, idx) =>
       params.checkCanceled()
       val symbolName = member.symNameDropLocal.decoded
@@ -225,9 +225,9 @@ class CompletionProvider(
             editRange
           )
 
-          scribe.info(s"get edit: ${editRange}")
+          // scribe.info(s"get edit: ${editRange}")
           item.setTextEdit(edit)
-          scribe.info(s"get item: ${item}")
+          // scribe.info(s"get item: ${item}")
           item.setAdditionalTextEdits(edits.asJava)
         case w: WorkspaceMember =>
           def createTextEdit(identifier: String) =
@@ -251,23 +251,23 @@ class CompletionProvider(
                 context,
                 value
               )
-              scribe.info(s"workspace member: ${w}")
-              scribe.info(s"syntesized edits: ${edits}")
+              // scribe.info(s"workspace member: ${w}")
+              // scribe.info(s"syntesized edits: ${edits}")
               /*
               here i start my experiments
                */
               //////////////////////
               // scribe.info(s"workspace member tree: ${w.viaImport}") empty tree
-              scribe.info(s"get short: ${short}") // name of completion
+              // scribe.info(s"get short: ${short}") // name of completion
               // scribe.info(s"lastVisitedParentTree: ${findLastVisitedParentTree(pos)}")// lastVisitedParentTree: Some(HashMap_CURSOR_
               // scribe.info(s"locateTree: ${locateTree(pos)}") //same as lastVisited
-              scribe.info(
-                s"get additionalTextEdits from member: ${w.additionalTextEdits}"
-              )
+              // scribe.info(
+              //   s"get additionalTextEdits from member: ${w.additionalTextEdits}"
+              // )
 
               // locateTree(params.po)
-              scribe.info(s"here is unit: ${unit}")
-              scribe.info(s"here is pos: ${pos}")
+              // scribe.info(s"here is unit: ${unit}")
+              // scribe.info(s"here is pos: ${pos}")
 
               // scribe.info(s"get pos.source.file.absolute.path: ${}")
               // val file = new String(pos.source.content)
@@ -284,21 +284,21 @@ class CompletionProvider(
                   _.stats.takeWhile(_.isInstanceOf[Import]).lastOption
                 )
                 .map(_.pos)
-              scribe.info(
-                s"get if values: ${(w.additionalTextEdits ne null)}, ${w.additionalTextEdits.nonEmpty}, ${edits}"
-              )
-              scribe.info(s"autoImportPos: ${lastImportPos.map(_.line)}")
+              // scribe.info(
+              //   s"get if values: ${(w.additionalTextEdits ne null)}, ${w.additionalTextEdits.nonEmpty}, ${edits}"
+              // )
+              // scribe.info(s"autoImportPos: ${lastImportPos.map(_.line)}")
               if (
                 (w.additionalTextEdits ne null) && w.additionalTextEdits.nonEmpty || edits.nonEmpty
               ) {
-                val file = new String(
-                  pos.source
-                    .lines(
-                      0,
-                      lastImportPos.map(_.line).getOrElse(1) // todo: fix
-                    )
-                    .mkString("\n")
-                )
+                // val file = new String(
+                //   pos.source
+                //     .lines(
+                //       0,
+                //       lastImportPos.map(_.line).getOrElse(1) // todo: fix
+                //     )
+                //     .mkString("\n")
+                // )
                 /*
                  Реализация без Trees, через парсинг сурса с подбором последней позиции импорта
                  */
@@ -342,12 +342,12 @@ class CompletionProvider(
               Если не пустой, то надо менять на то, что накручу через магию скалафикса
               + отсюда же взять только импорты
                */
-              scribe.info(
-                s"createTextEdit(short + suffix): $short , $suffix, ${w.wrap(short + suffix)}"
-              )
-              scribe.info(
-                s"createTextEdit(short + suffix): ${createTextEdit(short + suffix)}"
-              )
+              // scribe.info(
+              //   s"createTextEdit(short + suffix): $short , $suffix, ${w.wrap(short + suffix)}"
+              // )
+              // scribe.info(
+              //   s"createTextEdit(short + suffix): ${createTextEdit(short + suffix)}"
+              // )
               item.setTextEdit(createTextEdit(short + suffix))
           }
         case _
@@ -441,9 +441,9 @@ class CompletionProvider(
     // todo: here is all imports. should rearrange them
 
     val result = new CompletionList(items.toSeq.asJava)
-    scribe.info(s"collected items: ${result}")
+    // scribe.info(s"collected items: ${result}")
     result.setIsIncomplete(i.isIncomplete)
-    scribe.info(s"here is call inside CompletionProvider: res ${result}")
+    // scribe.info(s"here is call inside CompletionProvider: res ${result}")
     result
   }
 

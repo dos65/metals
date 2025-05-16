@@ -55,6 +55,7 @@ import org.eclipse.lsp4j.Range
 import org.eclipse.lsp4j.SelectionRange
 import org.eclipse.lsp4j.SignatureHelp
 import org.eclipse.lsp4j.TextEdit
+import scalafix.interfaces.imports.OrganizeImportsDirect
 
 case class ScalaPresentationCompiler(
     buildTargetIdentifier: String = "",
@@ -67,7 +68,8 @@ case class ScalaPresentationCompiler(
     config: PresentationCompilerConfig = PresentationCompilerConfigImpl(),
     folderPath: Option[Path] = None,
     reportsLevel: ReportLevel = ReportLevel.Info,
-    completionItemPriority: CompletionItemPriority = (_: String) => 0
+    completionItemPriority: CompletionItemPriority = (_: String) => 0,
+    organizeImportsDirect: OrganizeImportsDirect = identity(_)
 ) extends PresentationCompiler {
 
   implicit val executionContext: ExecutionContextExecutor = ec
@@ -115,6 +117,11 @@ case class ScalaPresentationCompiler(
       priority: CompletionItemPriority
   ): PresentationCompiler =
     copy(completionItemPriority = priority)
+
+  override def withOrganizeImports(
+      organizeImports: OrganizeImportsDirect
+  ): PresentationCompiler =
+    copy(organizeImportsDirect = organizeImports)
 
   override def supportedCodeActions(): util.List[String] = List(
     CodeActionId.ConvertToNamedArguments,
@@ -222,7 +229,7 @@ case class ScalaPresentationCompiler(
     ) { pc =>
       val res =
         new CompletionProvider(pc.compiler(params), params).completions()
-      scribe.info(s"[scala presentation compiler]got completions: ${res}")
+      // scribe.info(s"[scala presentation compiler]got completions: ${res}")
       res
     }
   }
@@ -607,7 +614,8 @@ case class ScalaPresentationCompiler(
       buildTargetIdentifier,
       config,
       folderPath,
-      completionItemPriority
+      completionItemPriority,
+      organizeImportsDirect
     )
   }
 

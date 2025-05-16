@@ -10,6 +10,8 @@ import scala.meta.pc
 import scala.meta.pc.SymbolDocumentation
 
 import org.eclipse.{lsp4j => l}
+import java.{util => ju}
+import scalafix.interfaces.imports
 
 trait Signatures { compiler: MetalsGlobal =>
 
@@ -58,6 +60,85 @@ trait Signatures { compiler: MetalsGlobal =>
         config = renameConfig
       )
       val tpeString = shortType(tpe, history).toString()
+
+      val allImports =
+        (for {
+          pkg <- lastVisitedParentTrees.collectFirst {
+            case pkg: PackageDef if notPackageObject(pkg) => pkg
+          }
+          if pkg.symbol != rootMirror.EmptyPackage ||
+            pkg.stats.headOption.exists(_.isInstanceOf[Import])
+        } yield {
+          pkg.stats
+            .takeWhile(_.isInstanceOf[Import])
+            .map(_.asInstanceOf[Import])
+        }).getOrElse(Nil)
+
+      def exprtToTermRef(
+          e: Tree,
+          acc: List[String] = Nil
+      ): Option[scalafix.interfaces.imports.TermRef] = {
+        e match {
+          case Select(qual, name) =>
+            exprtToTermRef(qual, name.decoded :: acc)
+          case Ident(iName) =>
+            val i: scalafix.interfaces.imports.TermRef =
+              new scalafix.interfaces.imports.Ident {
+                override def name(): String = iName.decoded
+              }
+
+            val out =
+              acc.foldLeft(i) { case (ref, selName) =>
+                new scalafix.interfaces.imports.Select {
+                  override def qualifier()
+                      : scalafix.interfaces.imports.TermRef = ref
+
+                  override def name(): String = selName
+                }
+              }
+            Some(out)
+          case _ => None
+        }
+      }
+
+      def toInterfaceImport2(
+          i: Import
+      ): Option[scalafix.interfaces.imports.Import] = {
+        val selectors = i.selectors.map { sel => sel.name.decoded }
+
+        exprtToTermRef(i.expr).map { xref =>
+          new scalafix.interfaces.imports.Import {
+            override def importers()
+                : ju.List[scalafix.interfaces.imports.Importer] = {
+              val importer =
+                new scalafix.interfaces.imports.Importer {
+                  override def ref(): imports.TermRef = xref
+
+                  override def importees(): ju.List[String] = selectors.asJava
+                }
+              List(importer).asJava
+            }
+          }
+        }
+      }
+
+      def toInterfaceImport(
+          i: Tree
+      ): Option[scalafix.interfaces.imports.Import] =
+        i match {
+          case i: Import => toInterfaceImport2(i)
+        }
+
+      if (allImports.nonEmpty) {
+        val converted =
+          allImports.flatMap { i =>
+            toInterfaceImport(i)
+          }
+
+        println(s"Converted: // ${converted}")
+        orgImports.organize(converted.asJava)
+      }
+
       val edits = history.autoImports(pos, importPosition)
       (tpeString, edits)
     }
