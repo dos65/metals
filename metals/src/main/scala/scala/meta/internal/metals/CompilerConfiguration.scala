@@ -242,7 +242,7 @@ class CompilerConfiguration(
         mtags,
         worksheetSearch,
         referenceCounter,
-        identity(_),
+        OrganizeImportsDirect.noopInstance(),
         classpath,
       )
     }
@@ -258,7 +258,12 @@ class CompilerConfiguration(
 
     protected def newCompiler(classpath: Seq[Path]): PresentationCompiler = {
       val pc = JavaPresentationCompiler()
-      configure(pc, search, completionItemPriority, identity(_))
+      configure(
+        pc,
+        search,
+        completionItemPriority,
+        OrganizeImportsDirect.noopInstance(),
+      )
         .newInstance(
           targetId.getUri(),
           classpath.asJava,

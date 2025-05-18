@@ -580,6 +580,7 @@ case class ScalafixProvider(
     scalafixCache.getOrElseUpdate(
       scalaVersion, {
         workDoneProgress.trackBlocking("Downloading scalafix") {
+          scribe.info(s"GET SCALAFIX")
           val scalafix =
             if (scalaVersion.startsWith("2.11")) scala211Fallback
             else
@@ -633,6 +634,7 @@ case class ScalafixProvider(
             Embedded.rulesClasspath(
               rulesDependencies.toList ++ organizeImportRule
             )
+          scribe.info(s"RULE CLASSLOADER: ${paths}")
           val classloader = Embedded.toClassLoader(
             Classpath(paths.map(AbsolutePath(_))),
             scalafixClassLoader,

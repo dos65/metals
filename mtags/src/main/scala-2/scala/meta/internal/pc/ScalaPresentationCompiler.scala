@@ -69,7 +69,8 @@ case class ScalaPresentationCompiler(
     folderPath: Option[Path] = None,
     reportsLevel: ReportLevel = ReportLevel.Info,
     completionItemPriority: CompletionItemPriority = (_: String) => 0,
-    organizeImportsDirect: OrganizeImportsDirect = identity(_)
+    organizeImportsDirect: OrganizeImportsDirect =
+      OrganizeImportsDirect.noopInstance()
 ) extends PresentationCompiler {
 
   implicit val executionContext: ExecutionContextExecutor = ec

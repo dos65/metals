@@ -168,7 +168,7 @@ class Compilers(
                   search,
                   Nil,
                   completionItemPriority(),
-                  scalafix.loadOrganizeImports(),
+                  scalafix.loadOrganizeImports(java.util.Optional.empty()),
                 )
               }
             case None =>
@@ -181,7 +181,7 @@ class Compilers(
                 search,
                 Nil,
                 completionItemPriority(),
-                scalafix.loadOrganizeImports(),
+                scalafix.loadOrganizeImports(java.util.Optional.empty()),
               )
           }
         },
@@ -1868,7 +1868,7 @@ class Compilers(
             sources,
             Some(search),
             completionItemPriority(),
-            scalafix.loadOrganizeImports(),
+            scalafix.loadOrganizeImports(java.util.Optional.empty()),
           )
         },
       )
@@ -1923,7 +1923,7 @@ class Compilers(
                 mtags,
                 search,
                 completionItemPriority(),
-                scalafix.loadOrganizeImports(),
+                scalafix.loadOrganizeImports(java.util.Optional.empty()),
               )
             }
           val key =

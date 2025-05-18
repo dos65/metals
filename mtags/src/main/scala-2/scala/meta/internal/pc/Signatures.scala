@@ -1,5 +1,10 @@
 package scala.meta.internal.pc
 
+import java.nio.file.Files
+import java.nio.file.Paths
+import java.nio.file.StandardOpenOption
+import java.{util => ju}
+
 import scala.collection.Seq
 import scala.collection.mutable
 import scala.collection.mutable.ListBuffer
@@ -10,7 +15,6 @@ import scala.meta.pc
 import scala.meta.pc.SymbolDocumentation
 
 import org.eclipse.{lsp4j => l}
-import java.{util => ju}
 import scalafix.interfaces.imports
 
 trait Signatures { compiler: MetalsGlobal =>
@@ -130,13 +134,30 @@ trait Signatures { compiler: MetalsGlobal =>
         }
 
       if (allImports.nonEmpty) {
+        Files.write(
+          Paths.get("/home/v.chelyshov/debug"),
+          "SDSAKDHASKHDKASDH????\n".getBytes,
+          StandardOpenOption.APPEND,
+          StandardOpenOption.CREATE
+        )
         val converted =
           allImports.flatMap { i =>
             toInterfaceImport(i)
           }
 
-        println(s"Converted: // ${converted}")
-        orgImports.organize(converted.asJava)
+        val organized = orgImports.organize(converted.asJava)
+        Files.write(
+          Paths.get("/home/v.chelyshov/debug"),
+          organized.asScala.mkString("\n").getBytes,
+          StandardOpenOption.APPEND,
+          StandardOpenOption.CREATE
+        )
+        Files.write(
+          Paths.get("/home/v.chelyshov/debug"),
+          orgImports.toString().getBytes,
+          StandardOpenOption.APPEND,
+          StandardOpenOption.CREATE
+        )
       }
 
       val edits = history.autoImports(pos, importPosition)
